@@ -273,6 +273,10 @@
     - id: ui-trajectory
       name: '@deepseek-ai/dsh-client-ui-trajectory'
 
+    # Live-stream room: replaces the `conversation` surface (no extra tab).
+    - id: ui-slg
+      name: '@deepseek-ai/dsh-client-ui-slg'
+
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #
 # Every row below composes what ONE agent contributes to the host registries:

@@ -1,0 +1,42 @@
+# Agent Note: Live-stream room as the conversation surface
+
+Status: implemented
+
+English | [中文](2026-08-16-slg-game-view.zh.md)
+
+## Problem
+
+The dsh web GUI renders a conversation as a standard chat thread — tabs, messages, a composer. A user wanted the same live session presented as a Bilibili-style live-stream room (a host card, a character portrait, danmaku, a tool-call float, and a visual-novel speech bar, plus a conversation list grouped by workspace), and wanted that room to replace the whole conversation page — not to sit beside it as an extra tab. Every other plugin's surface (the app sidebar and the details column) must keep working, and nothing must change what reaches a model request.
+
+## Decision
+
+Ship `@deepseek-ai/dsh-client-ui-slg`, a client plugin package that registers into the frame's `conversation` slot (single, `session-maybe`) at `priority: -1`. A single slot renders its lowest live entry, so the room shadows ui-conversation's ConversationRoot: the whole center column renders as the room, with no extra tab. The view is a pure presentation component (`SlgGameView`) whose props are the conversation runtime share (`PropsRuntime<'conversation'>`, so `sessionId` and `useSession` are session-maybe) plus `PropsLocale<'slg'>`, a declared settings store, and an injected business face `{ send, stop, loadOlder }` plus the model-selection face `{ modelAvailable, modelDirectory, loadModels, selectModel }`.
+
+Live data arrives through the framework hooks only: the speech bar, chat log, and conversation navigator read the conversation lines and streaming partial from `useSession`, the tok badge reads `useProjection('sessionStats')`, and the room title and member switching read `useSessions` rows. The verbs resolve the scope-addressed conversation service (`sessions.scope(sessionId)?.get('conversation')`) for send/stop and history paging; there is no model-visible input and no session event. The room stays mounted across session switches (the slot is session-maybe) and disables its input line while no session is current.
+
+Live-room settings (streamer name, danmaku region/density/opacity/font size/speeds, stacking, thinking-panel height) ride a declared store (`createSlgSettingsStore`, `persist: 'dsh.slg.settings'`) so they survive remounts and reloads. The renderer omits the store seats while a session-maybe entry is unadopted and adoption does not remount, so the exported component is a hook-free dispatcher: `StoredRoom` reads the store once seats exist, `EphemeralRoom` keeps the same settings face in local state before that, and both render the shared `RoomView` body. Persistence replaces state wholesale, so `StoredRoom` heals payloads written by older shapes (missing fields fall back to defaults and are written back).
+
+The conversation navigator renders one dot per viewer message, each anchored to its real chat-log row element: clicking a dot scrolls that message to the viewport top, the active dot (last row at/above the viewport top) is kept centered in the strip, the strip shows exactly 4.5 adaptive dots, and one wheel tick steps exactly one dot pitch. While the snapshot reports `hasMore`, the room auto-pages `loadOlder` (stopping on a failed pull, retrying on session switch) so the log and navigator cover the whole conversation. While a turn streams reasoning, the speech bar shows the real thinking text in a resizable persisted panel that auto-scrolls.
+
+The portrait shows one of seven emotion images served from the Web shell's public dir (`apps/web/public/portraits/`, referenced as `/portraits/<emotion>.png`); six invisible hit zones over the frame each swap the portrait to a matching expression and route a reaction line into the bottom speech bar, then revert after a short delay. Danmaku, the gift danmaku layer, and the chat log all derive from the same flattened session lines (user/assistant text and assistant tool calls), so they never disagree; the danmaku/gift toggles gate the two overlays, and the danmaku/gift speed multipliers come from the settings store. The emotion/reaction, panel selection, and toggles are component-local state.
+
+The composition route follows the [slot system standard](../architecture/2026-07-22-slot-type-chain-implementation.md); the shadowing mechanism (a single slot's lowest live entry renders) and the frame's `conversation` seat are described in the [web client architecture note](../architecture/2026-07-19-gui-web-client-architecture.md).
+
+## Alternatives considered
+
+**Keep the room as a `conversation.view` tab entry.** That is exactly what the user rejected: it renders the room beside Chat as a second tab, not as the page. A tab also leaves the resident composer and its seats live, which the room does not need.
+
+**Shadow the `root` slot to replace the whole app.** Registering into `root` would remove the sidebar and details column too, and `root` is session-scope with no `useSession`, so the room could not read the current session. The frame explicitly warns against it; `conversation` (session-maybe) is the seat that carries the current session while still replacing the whole conversation surface.
+
+**Drive danmaku, gifts, and tool calls from separate synthetic feeds.** Routing the three surfaces through one derived line stream (the session nodes) keeps them consistent with the chat log and the speech bar for free, and matches how the harness actually produces them (assistant tool calls are part of the turn).
+
+## Consequences
+
+- The room replaces the conversation surface: the center column's header, tabs, chat body, and composer are shadowed, while the app sidebar and details column keep working. Disabling the package restores the default chat thread.
+- The resident composer and its seats (model selection, plan, input docks) are unavailable while the package is enabled; the room ships its own input line and model switcher, so a session can still send and switch models.
+- Settings persist per session scope in localStorage; a stale payload shape heals on first mount. No model-visible change: the view re-renders existing snapshots and forwards input through the conversation service, so nothing new reaches a model request or the session log.
+- Workspace/session management verbs (rename, fork, archive, delete) stay unbound: the room surfaces switching only, through the sessions runtime share.
+
+## Testing
+
+`browser-plugin.client.spec.ts` applies the plugin on a real cordis Context + SlotRegistry and asserts the `conversation` entry (component, locale, shadowing priority), the inject face (send/stop rejection without a scoped conversation, degraded model face), and fiber-teardown unregistration. `slg-game-view.client.spec.tsx` renders the component props-direct (58 tests): speech-bar greeting/streaming/real-thinking panel with persisted resizable height and stale-payload healing, seatless pre-session rendering with ephemeral settings, the settings popover driving every store action across remounts, tok-speed display and degradation, auto history paging (loop, in-flight dedupe, failure stop), and the anchored navigator (exact row jumps, active-dot centering, one-dot wheel steps).
