@@ -21,6 +21,9 @@
       "path": "../../typert/protocol"
     },
     {
+      "path": "../../boot/user-patches"
+    },
+    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

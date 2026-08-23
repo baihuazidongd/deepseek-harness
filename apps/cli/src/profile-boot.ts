@@ -36,6 +36,7 @@ const SHIPPED_PRESET_ROOT = fileURLToPath(new URL('../config/agent-presets/', im
 
 import { DSH_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import { provideCmdline } from '@deepseek-ai/dsh-cmdline'
+import { provideUserPatchPaths } from '@deepseek-ai/dsh-user-patches'
 import { createProcessShutdown, type ProcessShutdown } from './process-shutdown.ts'
 
 const NAME = 'dsh'
@@ -255,6 +256,14 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
     provideCmdline(hostCtx, {
       args: options.args,
       exit: code => void shutdown.shutdown(code),
+    })
+    // The user patch-layer paths are launcher facts too: only this launcher
+    // knows which files the composition treated as the user layers, and a
+    // runtime enablement write (pluginInventory.setEnabled) persists into the
+    // profile's own layer through them.
+    provideUserPatchPaths(hostCtx, {
+      profilePatchPath: composed.profile.patchPath,
+      homePatchPath: homePatchPath(),
     })
   })
   app.current = ctx

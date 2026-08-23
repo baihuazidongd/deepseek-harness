@@ -12,6 +12,9 @@
 | `dsh --profile headless "job"` | 运行一个全新的持久化会话，打印最终答案并退出。 |
 | `dsh web` | `--profile web` 的别名。 |
 | `dsh plugin --profile <name> <pnpm args>` | 通过在 profile 目录中转发给 pnpm 来管理该 profile 的插件。 |
+| `dsh mirror create <name> --from <profile>` | 把一个 profile 的组合文件复制成一次性镜像 profile（pnpm 从共享存储重链用户安装的插件）。 |
+| `dsh mirror launch <name>` | 把镜像作为脱离的后台 web 实例在空闲端口启动，等待 HTTP 应答后打印 URL。 |
+| `dsh mirror list` / `status <name>` / `stop <name>` / `discard <name>` | 查看镜像及其进程状态；stop 终止实例进程树；discard 停止并删除镜像目录（没有镜像记录的真实 profile 会被拒绝）。 |
 
 运行命令时所在的目录将作为默认 workspace 根目录。`web` 和 `headless` profile 在首次使用时会从随附模板自动初始化；其他任何 profile 都必须通过 `dsh plugin` 创建。
 

@@ -44,8 +44,19 @@ interface PluginInvocation {
   args: string[]
 }
 
+/** Operate a disposable mirror profile (copy, boot, inspect, stop, delete). */
+interface MirrorInvocation {
+  mode: 'mirror'
+  /** The mirror verb: create, list, launch, status, stop, or discard. */
+  command: 'create' | 'list' | 'launch' | 'status' | 'stop' | 'discard'
+  /** The mirror profile name (absent for `list`). */
+  mirror?: string
+  /** The source profile for `create`. */
+  from?: string
+}
+
 /** The resolved `dsh` invocation. Help, version, and errors exit inside {@link parseDshArgs}. */
-export type DshInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation
+export type DshInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation | MirrorInvocation
 
 /** Launcher flags shared by the default command and the `web` alias. */
 interface BootOptions {
@@ -179,6 +190,50 @@ export function parseDshArgs(argv: readonly string[], version: string): DshInvoc
       if (args.length === 0) program.error('error: plugin needs pnpm arguments to forward (e.g. add <package>)')
       resolved = { mode: 'plugin', profile: options.profile, args }
     })
+
+  const mirror = program.command('mirror').description('operate disposable mirror profiles: copy a profile, boot it on a free port, stop or delete it')
+  const mirrorName = (command: Command): void => {
+    command.argument('<name>', 'the mirror profile name')
+  }
+  const mirrorCreate = mirror.command('create').description('copy a profile\'s composition files into a new mirror profile')
+  mirrorCreate
+    .argument('<name>', 'the mirror profile name (convention: <profile>-mirror)')
+    .requiredOption('--from <profile>', 'the profile to copy')
+    .action((name: string, options: { from: string }) => {
+      rejectParentOptions('mirror')
+      if (name === '') program.error('error: mirror create needs a name')
+      if (options.from === '') program.error('error: mirror create needs --from <profile>')
+      resolved = { mode: 'mirror', command: 'create', mirror: name, from: options.from }
+    })
+  mirror.command('list').description('list mirror profiles and their running state')
+    .action(() => {
+      rejectParentOptions('mirror')
+      resolved = { mode: 'mirror', command: 'list' }
+    })
+  const mirrorLaunch = mirror.command('launch').description('boot a mirror as a background web instance on a free port and wait for it to answer')
+  mirrorName(mirrorLaunch)
+  mirrorLaunch.action((name: string) => {
+    rejectParentOptions('mirror')
+    resolved = { mode: 'mirror', command: 'launch', mirror: name }
+  })
+  const mirrorStatus = mirror.command('status').description('show a mirror\'s state, process liveness, and log tail')
+  mirrorName(mirrorStatus)
+  mirrorStatus.action((name: string) => {
+    rejectParentOptions('mirror')
+    resolved = { mode: 'mirror', command: 'status', mirror: name }
+  })
+  const mirrorStop = mirror.command('stop').description('stop a mirror\'s background instance')
+  mirrorName(mirrorStop)
+  mirrorStop.action((name: string) => {
+    rejectParentOptions('mirror')
+    resolved = { mode: 'mirror', command: 'stop', mirror: name }
+  })
+  const mirrorDiscard = mirror.command('discard').description('stop a mirror and delete its profile directory')
+  mirrorName(mirrorDiscard)
+  mirrorDiscard.action((name: string) => {
+    rejectParentOptions('mirror')
+    resolved = { mode: 'mirror', command: 'discard', mirror: name }
+  })
 
   try {
     program.parse(argv, { from: 'user' })

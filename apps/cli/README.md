@@ -12,6 +12,9 @@ The `dsh` command is the product launcher for profiles: ordered stacks of plugin
 | `dsh --profile headless "job"` | Run one fresh persisted session, print the final answer, and exit. |
 | `dsh web` | Alias of `--profile web`. |
 | `dsh plugin --profile <name> <pnpm args>` | Manage a profile's plugins by forwarding to pnpm in the profile directory. |
+| `dsh mirror create <name> --from <profile>` | Copy a profile's composition files into a disposable mirror profile (pnpm relinks user-installed plugins from the shared store). |
+| `dsh mirror launch <name>` | Boot a mirror as a detached background web instance on a free port, wait for its HTTP endpoint, and print the URL. |
+| `dsh mirror list` / `status <name>` / `stop <name>` / `discard <name>` | Inspect mirrors and their process state; stop kills the instance tree; discard stops and deletes the mirror directory (a real profile without a mirror record is refused). |
 
 The invoking directory is the default workspace root. The `web` and `headless` profiles auto-initialize on first use from shipped templates; any other profile must be created through `dsh plugin`.
 
