@@ -24,6 +24,9 @@
       "path": "../../packages/boot/cmdline"
     },
     {
+      "path": "../../packages/boot/user-patches"
+    },
+    {
       "path": "../../packages/bundle/base"
     },
     {

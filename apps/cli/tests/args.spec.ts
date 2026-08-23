@@ -57,6 +57,25 @@ describe('parseDshArgs', () => {
       .toEqual({ mode: 'plugin', profile: 'tui', args: ['add', '--save-dev', 'x'] })
   })
 
+  it('routes the mirror command family', () => {
+    expect(parse(['mirror', 'create', 'web-mirror', '--from', 'web']))
+      .toEqual({ mode: 'mirror', command: 'create', mirror: 'web-mirror', from: 'web' })
+    expect(parse(['mirror', 'list']))
+      .toEqual({ mode: 'mirror', command: 'list' })
+    expect(parse(['mirror', 'launch', 'web-mirror']))
+      .toEqual({ mode: 'mirror', command: 'launch', mirror: 'web-mirror' })
+    expect(parse(['mirror', 'status', 'web-mirror']))
+      .toEqual({ mode: 'mirror', command: 'status', mirror: 'web-mirror' })
+    expect(parse(['mirror', 'stop', 'web-mirror']))
+      .toEqual({ mode: 'mirror', command: 'stop', mirror: 'web-mirror' })
+    expect(parse(['mirror', 'discard', 'web-mirror']))
+      .toEqual({ mode: 'mirror', command: 'discard', mirror: 'web-mirror' })
+    // Parent launcher flags do not reach a mirror verb.
+    expect(exitCode(['--profile', 'web', 'mirror', 'list'])).toBeGreaterThan(0)
+    // create names its source explicitly.
+    expect(exitCode(['mirror', 'create', 'x'])).toBeGreaterThan(0)
+  })
+
   it('routes profile and web config dumps', () => {
     expect(parse(['--profile', 'web', '--dump-config']))
       .toEqual({ mode: 'dump-config', profile: 'web', defaultOnly: false, patches: [] })

@@ -42,6 +42,36 @@ switch (invocation.mode) {
     process.exit(runPlugin(invocation.profile, invocation.args))
     break
   }
+  case 'mirror': {
+    const mirror = await import('./mirror.ts')
+    // A local discriminant: the satisfies-exhaustiveness check narrows the
+    // const, not the property access chain.
+    const mirrorCommand = invocation.command
+    switch (mirrorCommand) {
+      case 'create':
+        process.exit(mirror.runMirrorCreate(invocation.mirror ?? '', invocation.from ?? ''))
+        break
+      case 'list':
+        process.exit(mirror.runMirrorList())
+        break
+      case 'launch':
+        process.exit(await mirror.runMirrorLaunch(invocation.mirror ?? ''))
+        break
+      case 'status':
+        process.exit(mirror.runMirrorStatus(invocation.mirror ?? ''))
+        break
+      case 'stop':
+        process.exit(mirror.runMirrorStop(invocation.mirror ?? ''))
+        break
+      case 'discard':
+        process.exit(mirror.runMirrorDiscard(invocation.mirror ?? ''))
+        break
+      default:
+        mirrorCommand satisfies never
+        throw new Error(`dsh: unhandled mirror command ${JSON.stringify(mirrorCommand)}`)
+    }
+    break
+  }
   case 'dump-config': {
     const { runDumpConfig } = await import('./dump-config.ts')
     runDumpConfig(invocation.profile, invocation.defaultOnly, invocation.patches)
