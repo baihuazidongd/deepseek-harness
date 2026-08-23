@@ -26,7 +26,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-fs` | `edit`, `read`, `read_image`, `write` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt`, `ctx.attachments (read_image registration)`, `ctx.llm + an image-capable route (read_image execution)` | `tool/call`, `fs/write-intent or fs/edit-intent for mutations`, `fs/observed after read presence/absence or successful file operation`, `durable attachment (read_image)`, `tool/result` | - | The read-before-write/edit policy is added by `@deepseek-ai/dsh-fs-observation-policy` (an `fs/*` event-gate plugin, no schema change); a deployment that loads these tools is expected to also load it. `read_image` is not registered without `ctx.attachments`; its schema is route-independent, and execution refuses unless the exact routed model declares image input. |
 | `@deepseek-ai/dsh-tool-fs-search` | `glob`, `grep` | `ctx.tools`, `ctx.subprocess`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments. |
 | `@deepseek-ai/dsh-tool-terminal` | `terminal_close`, `terminal_list`, `terminal_open`, `terminal_read`, `terminal_send`, `terminal_signal` | `ctx.tools`, `ctx.terminals`, `ctx.systemPrompt`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The six terminal tools are opt-in and complement one-shot shell/filesystem tools. `terminal_send(run_in_background: true)` registers with `ctx.jobs`; TUI, named key sequences, BEL, resize, auto-start, and cross-agent sharing are absent from the schema. |
-| `@deepseek-ai/dsh-tool-goal` | `create_goal`, `get_goal`, `update_goal` | `ctx.tools`, `ctx.agents`, `ctx.goals`, `ctx.systemPrompt`, `a calling Agent in an authorized open turn` | `tool/call`, `goal/change for mutations`, `tool/result` | - | create, edit, pause, and resume require direct-human root authority; complete and blocked also accept the exact current goal round. The default blocked lower bound is three admitted rounds. |
+| `@deepseek-ai/dsh-tool-goal` | `create_goal`, `get_goal`, `update_goal` | `ctx.tools`, `ctx.agents`, `ctx.goals`, `ctx.systemPrompt`, `a calling Agent in an authorized open turn` | `tool/call`, `goal/change for mutations`, `tool/result` | - | create requires a runtime-root agent and may run automatically in any top-level turn; edit, pause, and resume require direct-human root authority; complete and blocked also accept the exact current goal round. The default blocked lower bound is three admitted rounds. |
+| `@deepseek-ai/dsh-tool-plugin-inventory` | `plugin_inventory` | `ctx.tools`, `ctx.loader`, `ctx.pluginInventory (dsh-host-plugin-inventory)`, `ctx.userPatchPaths at set_enabled time` | `tool/call`, `loader entry enablement plus a persisted user patch row for set_enabled`, `tool/result` | - | Shipped under the standard/code/cordis agent presets (not the TUI base bundle); the host plugin-inventory service itself is mounted by the web composition, and preset rows on a composition without it stay waiting. |
 | `@deepseek-ai/dsh-schedule` | `schedule_create`, `schedule_delete`, `schedule_list` | `ctx.tools`, `ctx.sessions`, `Session persistence`, `a future live root Agent` | `tool/call`, `schedule/change create or delete`, `tool/result` | - | Registered only inside live root Agent scopes created after the opt-in Schedule plugin loads. Version 1 accepts after_seconds, explicit absolute at, and bounded fixed-rate every_seconds, and discloses session-local delivery; management reads and mutations require the shared Session persistence barrier. |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`, `ctx.lsp`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | The lsp tool keeps provider selection and language-server subprocesses behind ctx.lsp, so its model-visible schema stays stable across providers. Requires a registered provider (e.g. `@deepseek-ai/dsh-lsp-stdio`) at runtime; without one, a query returns the structured `LSP_UNAVAILABLE` error rather than changing the schema. |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`, `ctx.workflowEngine`, `ctx.subagents`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents every fresh round)` | `tool/call`, `tool/result`, `workflow and child session events during execution` | - | A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap. |
@@ -944,7 +945,7 @@ The six terminal tools are opt-in and complement one-shot shell/filesystem tools
 
 ### `create_goal`
 
-Create one persisted same-session completion goal when the current direct human request is a long-running objective that should continue across autonomous goal rounds. You may infer that intent without requiring the user to say "create a goal". Do not use this for trivial single-turn work. Execution rejects non-human and subagent authority.
+Create one persisted same-session completion goal when the current request is a long-running objective that should continue across autonomous goal rounds. Create one automatically as soon as you recognize such a long task, in any top-level turn — from a direct human request or a plugin-continued turn — without waiting for the user to ask. Do not use this for trivial single-turn work. Execution is rejected only for subagents.
 
 ```json
 {
@@ -1030,7 +1031,46 @@ Update the exact current goal revision. edit, pause, and resume require a direct
 
 Source: [`packages/goal/tool-goal/src/index.ts`](../packages/goal/tool-goal/src/index.ts)
 
-create, edit, pause, and resume require direct-human root authority; complete and blocked also accept the exact current goal round. The default blocked lower bound is three admitted rounds.
+create requires a runtime-root agent and may run automatically in any top-level turn; edit, pause, and resume require direct-human root authority; complete and blocked also accept the exact current goal round. The default blocked lower bound is three admitted rounds.
+
+<a id="deepseek-aidsh-tool-plugin-inventory"></a>
+
+## `@deepseek-ai/dsh-tool-plugin-inventory`
+
+### `plugin_inventory`
+
+Inspect and manage the plugins of this DeepSeek Harness deployment. Operation `list` returns every configured plugin entry: its Loader entry id, module name, enabled flag, lifecycle phase (`pending` | `loading` | `active` | `failed` | `unloading` | `null` when it has no live fiber), source (`native` for product-shipped bundles, `library` for packages the user installed into the profile), and the declared package description/version when available. Operation `set_enabled` flips one entry by entry id: the change hot-applies immediately (no restart) and persists into the booted profile's user patch layer (cordis.patch.yml), so it survives relaunches. Installing a NEW plugin goes through a mirror first: `dsh mirror create <profile>-mirror --from <profile>` copies the live composition into a disposable profile, `dsh plugin --profile <profile>-mirror add <package>` installs the plugin there, append an insert block to the MIRROR's cordis.patch.yml — `- insert:` with a two-space-indented `- id: <pick-an-id>` and `name: <package>` pair (a bare top-level `{ id, name }` row targets an EXISTING entry and is skipped when the id is unknown) — and `dsh mirror launch <profile>-mirror` boots it as a background web instance on a free port (same DSH_HOME, so credentials carry over) and prints its URL once it answers. Verify on the mirror (its `plugin_inventory` list shows the entry `active`), share the mirror URL with the user, and wait for approval; only then repeat install+patch on the live profile (the booted profile's own name, e.g. `web`; ask the user when unsure) — the patch watcher applies it live, verify with `list` — then `dsh mirror stop` and `dsh mirror discard` the mirror (`dsh mirror list` shows every mirror and its state). An entry whose phase is `failed` usually has a missing package or a plugin that threw during mount; disable it with `set_enabled` to restore the rest of the tree.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "operation": {
+      "type": "string",
+      "description": "`list` reads the inventory; `set_enabled` flips one entry's enablement.",
+      "enum": [
+        "list",
+        "set_enabled"
+      ]
+    },
+    "entryId": {
+      "type": "string",
+      "description": "Loader entry id from a previous `list`; required for `set_enabled`."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Desired enablement; required for `set_enabled`."
+    }
+  },
+  "required": [
+    "operation"
+  ]
+}
+```
+
+Source: [`packages/host/tool-plugin-inventory/src/index.ts`](../packages/host/tool-plugin-inventory/src/index.ts)
+
+Shipped under the standard/code/cordis agent presets (not the TUI base bundle); the host plugin-inventory service itself is mounted by the web composition, and preset rows on a composition without it stay waiting.
 
 <a id="deepseek-aidsh-schedule"></a>
 

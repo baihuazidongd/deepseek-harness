@@ -244,7 +244,7 @@
     },
     {
       "name": "create_goal",
-      "description": "Create one persisted same-session completion goal when the current direct human request is a long-running objective that should continue across autonomous goal rounds. You may infer that intent without requiring the user to say \"create a goal\". Do not use this for trivial single-turn work. Execution rejects non-human and subagent authority.",
+      "description": "Create one persisted same-session completion goal when the current request is a long-running objective that should continue across autonomous goal rounds. Create one automatically as soon as you recognize such a long task, in any top-level turn — from a direct human request or a plugin-continued turn — without waiting for the user to ask. Do not use this for trivial single-turn work. Execution is rejected only for subagents.",
       "parameters": {
         "type": "object",
         "properties": {

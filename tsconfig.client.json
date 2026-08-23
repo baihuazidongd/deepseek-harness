@@ -79,6 +79,7 @@
     { "path": "./packages/client/ui-goal" },
     { "path": "./packages/client/ui-message-feedback" },
     { "path": "./packages/client/ui-model-selection" },
+    { "path": "./packages/client/ui-thinking-strength" },
     { "path": "./packages/client/ui-agent-preset" },
     { "path": "./packages/client/ui-permission-presets" },
     { "path": "./packages/client/ui-plan" },
@@ -92,6 +93,8 @@
     { "path": "./packages/client/ui-settings-general" },
     { "path": "./packages/client/ui-settings-models" },
     { "path": "./packages/client/ui-settings-plugin-inventory" },
+    { "path": "./packages/client/ui-session-archive" },
+    { "path": "./packages/client/ui-mods" },
     { "path": "./packages/client/locale" },
     { "path": "./packages/client/web" },
     { "path": "./apps/web" }

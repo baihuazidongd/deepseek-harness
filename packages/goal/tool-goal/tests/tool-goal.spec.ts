@@ -127,7 +127,7 @@ describe('goal tool registration and presentation', () => {
         .toEqual({ kind: 'exclusive' })
     }
     const section = (await ctx.systemPrompt.assemble()).sections.find(item => item.name === 'tool:goal')
-    expect(section?.text).toContain('infer goal intent')
+    expect(section?.text).toContain('create a goal automatically')
     expect(section?.text).toContain('at least 5 consecutive goal rounds')
 
     await fiber.dispose()
@@ -209,7 +209,7 @@ describe('goal tool execution authority', () => {
     expect(ctx.goals.get(root.agent)?.objective).toBe('Finish the feature')
   })
 
-  it('rejects agentless, driverless, non-human, and live-child creation', async () => {
+  it('rejects agentless and driverless creation', async () => {
     const { ctx, root } = await harness()
     const agentless = await execute(ctx, 'get_goal', {})
     expect(agentless.error?.info?.code).toBe('GOAL_TOOL_AGENT_REQUIRED')
@@ -224,11 +224,16 @@ describe('goal tool execution authority', () => {
     })
     expect(driverless.error?.info?.code).toBe('GOAL_TOOL_DRIVER_REQUIRED')
     closeTurn(root, 1)
+  })
 
+  it('lets a plugin-sourced root turn create a goal automatically but still rejects a live child', async () => {
+    const { ctx, root } = await harness()
     openTurn(root, { kind: 'plugin', plugin: 'test' })
-    const nonHuman = await execute(ctx, 'create_goal', { objective: 'forged' }, root.agent)
-    expect(nonHuman.error?.info?.code).toBe('GOAL_TOOL_AUTHORITY_REQUIRED')
-    closeTurn(root, 2)
+    const created = await execute(ctx, 'create_goal', { objective: 'auto-created' }, root.agent)
+    expect(resultGoal(created)).toMatchObject({
+      objective: 'auto-created', revision: 1, phase: 'active',
+    })
+    closeTurn(root, 1)
 
     const child = stubAgent('goal-tool-child')
     ctx.agents.enter(child.agent, root.agent)

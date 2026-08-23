@@ -8,6 +8,7 @@
     - img
   - tablist:
     - tab "Chat" [selected]
+    - tab "Game"
     - tab "Trajectory"
 - text: Use web_search to search exactly "DeepSeek Harness snapshot search". Then reply exactly SEARCH_DONE and stop. {{clock}}
 - button "Copy":

@@ -488,6 +488,36 @@ describe('WorkspaceRuntime', () => {
     expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual(['s-open'])
   })
 
+  it('unarchives a session, projects the set from the response, and leaves the selection alone', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    const workspaces = new WorkspaceRuntime(ctx, api, sessions)
+    api.onList = () => Promise.resolve(ok({
+      items: [
+        { sessionId: sid('s-open'), updatedAt: 2, running: false, blank: false },
+        { sessionId: sid('s-idle'), updatedAt: 1, running: false, blank: false },
+      ],
+    }) as never)
+    api.onWorkspaceList = () => Promise.resolve(ok({ items: [], archivedSessionIds: [sid('s-idle')] }) as never)
+    await sessions.refresh()
+    await workspaces.refresh()
+    sessions.open(sid('s-open'))
+
+    // Unarchiving installs the unary echo and never touches the selection.
+    await expect(workspaces.unarchiveSession(sid('s-idle'))).resolves.toBeUndefined()
+    expect(api.callsOf('workspace.unarchiveSession')).toEqual([{ sessionId: 's-idle' }])
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual([])
+    expect(sessions.list.getSnapshot().current).toBe('s-open')
+
+    // A Host failure leaves the set untouched.
+    api.onWorkspaceUnarchiveSession = () => Promise.resolve(err({
+      code: 'internal', message: 'storage down', details: {},
+    }))
+    await expect(workspaces.unarchiveSession(sid('s-idle'))).rejects.toThrow(/internal/)
+    expect(workspaces.list.getSnapshot().archivedSessionIds).toEqual([])
+  })
+
   it('clears a current archived by a remote frame and shields the set from a stale in-flight baseline', async () => {
     const ctx = new Context()
     const api = new FakeApiClient()

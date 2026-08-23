@@ -43,7 +43,7 @@ export type ResolvedConfig = Required<Config>
 /** Schemastery config exposed by the plugin. */
 export const Config: z<Config> = z.object({
   backendType: z.string().default('shell'),
-  shellPath: z.string().default('/bin/bash'),
+  shellPath: z.string().default(process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : '/bin/bash'),
   shellArgs: z.array(z.string()).default(['--noprofile', '--norc', '-i']),
   rows: z.number().default(40),
   cols: z.number().default(160),

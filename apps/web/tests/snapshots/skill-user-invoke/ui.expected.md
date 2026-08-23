@@ -8,6 +8,7 @@
     - img
   - tablist:
     - tab "Chat" [selected]
+    - tab "Game"
     - tab "Trajectory"
 - text: /user-invoke-demo and confirm the fixture wiring {{clock}}
 - button "Copy":

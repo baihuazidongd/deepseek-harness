@@ -16,6 +16,7 @@ import {
   completionAuthority,
   goalToolExecution,
   requireDirectHuman,
+  requireRootAgent,
 } from './authority.ts'
 import { renderWrapupContext } from './wrapup.ts'
 
@@ -43,10 +44,11 @@ type UpdateAction = 'edit' | 'pause' | 'resume' | 'complete' | 'blocked'
 const UPDATE_ACTIONS: UpdateAction[] = ['edit', 'pause', 'resume', 'complete', 'blocked']
 
 const CREATE_DESCRIPTION =
-  'Create one persisted same-session completion goal when the current direct human request '
-  + 'is a long-running objective that should continue across autonomous goal rounds. You may '
-  + 'infer that intent without requiring the user to say "create a goal". Do not use this for '
-  + 'trivial single-turn work. Execution rejects non-human and subagent authority.'
+  'Create one persisted same-session completion goal when the current request is a long-running '
+  + 'objective that should continue across autonomous goal rounds. Create one automatically as soon '
+  + 'as you recognize such a long task, in any top-level turn — from a direct human request or a '
+  + 'plugin-continued turn — without waiting for the user to ask. Do not use this for trivial '
+  + 'single-turn work. Execution is rejected only for subagents.'
 
 const GET_DESCRIPTION =
   'Read the current same-session goal, including its exact id/revision, objective, phase, completed '
@@ -112,8 +114,10 @@ const GOAL_VALUE_SCHEMA = {
 /** Render policy guidance with its deployment-selected blocked threshold. */
 function guidance(blockedAfter: number): string {
   return 'Use goal tools for one long-running completion objective in the current session. '
-    + 'create_goal may infer goal intent from a direct human request in any language; do not '
-    + 'create a goal for routine single-turn work. Call get_goal before update_goal and copy its '
+    + 'create_goal is available in every top-level turn: create a goal automatically as soon as you '
+    + 'recognize a long-running or multi-round task, from a direct human request in any language or '
+    + 'in a plugin-continued turn, without waiting to be asked. '
+    + 'Do not create a goal for routine single-turn work. Call get_goal before update_goal and copy its '
     + 'exact goal_id and revision. After session resume or fork, an active goal is disarmed: when '
     + 'a human asks to continue or resume in any wording or language, use update_goal action '
     + 'resume to rearm it. Mark complete only when the objective is actually achieved. Mark '
@@ -221,7 +225,7 @@ export function apply(ctx: Context, config: Config): void {
     output: GOAL_OUTPUT,
     execute(args, exec) {
       const execution = goalToolExecution(ctx, exec)
-      requireDirectHuman(ctx, execution)
+      requireRootAgent(ctx, execution)
       const goal = ctx.goals.create(execution.agent, {
         objective: args.objective,
         ...args.max_goal_rounds === undefined ? {} : { maxGoalRounds: args.max_goal_rounds },

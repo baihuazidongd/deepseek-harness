@@ -216,6 +216,23 @@ describe('current selection (migrated from ui-layout, arbitrated into the list s
     expect(b.svc.list.getSnapshot().current).toBe('s1')
   })
 
+  it('keeps the persisted selection across a masked gap (no wipe on transient absence)', async () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => { storage.set(k, v) },
+    })
+    const b = bench()
+    await feedList(b, [{ id: 's1' }, { id: 's2' }])
+    b.svc.open(sid('s1'))
+    expect(storage.get('dsh.sessions.current')).toContain('s1')
+    await feedList(b, [{ id: 's2' }]) // s1 masked: current falls to the empty state…
+    expect(b.svc.list.getSnapshot().current).toBeUndefined()
+    expect(storage.get('dsh.sessions.current')).toContain('s1') // …but the persisted cell survives
+    await feedList(b, [{ id: 's1' }, { id: 's2' }]) // s1 returns → selection resurfaces
+    expect(b.svc.list.getSnapshot().current).toBe('s1')
+  })
+
   it('persists the selection under dsh.sessions.current and rehydrates it into a fresh service', async () => {
     const storage = new Map<string, string>()
     vi.stubGlobal('localStorage', {

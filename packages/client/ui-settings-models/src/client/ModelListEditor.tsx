@@ -143,6 +143,57 @@ function capacitySpelling(value: number | undefined): string {
   return value === undefined ? '' : formatCapacity(value)
 }
 
+/** The canonical pi-ai reasoning levels a profile may declare, in escalation order. */
+// Mirrored from llm-pi-ai's THINKING_LEVELS: the source-plane split forbids a
+// client package importing the adapter, and a drift here fails loud at the
+// adapter's own schema on save rather than silently narrowing the offer.
+const REASONING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+
+/** A row's declared reasoning levels, shown as a comma-separated canonical list. */
+function reasoningText(model: ModelDraft): string {
+  const value = model.reasoningEfforts
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return ''
+  return Object.keys(value).join(', ')
+}
+
+/**
+ * Parse typed reasoning levels into a de-duplicated id list.
+ * @param text - comma-separated level ids, whitespace tolerated.
+ * @returns the parsed levels in typed order, or `undefined` when empty.
+ */
+function parseReasoning(text: string): string[] | undefined {
+  const levels = [...new Set(text.split(',').map(level => level.trim()).filter(Boolean))]
+  if (levels.length === 0) return undefined
+  return levels
+}
+
+/** The first level id the adapter would reject, or undefined when all are valid. */
+function invalidReasoningLevel(levels: readonly string[]): string | undefined {
+  return levels.find(level => !REASONING_LEVELS.includes(level))
+}
+
+/**
+ * Build the profile's id-to-wire mapping for the typed levels. A level set
+ * that matches the stored keys keeps the stored wire spellings (a gateway may
+ * rename `max` to `ultra`); a changed set writes canonical spellings, with
+ * `off` mapped to null so the adapter omits the option.
+ */
+function editReasoning(model: ModelDraft, levels: readonly string[]): Record<string, string | null> | undefined {
+  // The caller only invokes this with a non-empty parse; the empty guard is
+  // defensive for the function's own contract.
+  /* v8 ignore next -- unreachable from editReasoningField, which returns early on empty text */
+  if (levels.length === 0) return undefined
+  const stored = model.reasoningEfforts
+  const storedMap = typeof stored === 'object' && stored !== null && !Array.isArray(stored)
+    ? stored as Record<string, unknown>
+    : {}
+  const unchangedSet = levels.length === Object.keys(storedMap).length
+    && levels.every(level => level in storedMap)
+  return Object.fromEntries(levels.map(level => [
+    level,
+    unchangedSet ? storedMap[level] as string | null : level === 'off' ? null : level,
+  ]))
+}
 /** Adopt a candidate, keeping whatever capacities the provider disclosed. */
 function adopt(candidate: DiscoveredModelView): ModelDraft {
   return {
@@ -174,6 +225,12 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   // FIELD: a single buffer would be displaced by editing any other field, and
   // the abandoned one would render its stored NaN as the literal `NaN`.
   const [editing, setEditing] = useState<ReadonlyMap<string, string>>(new Map())
+  // Reasoning levels are edited as raw text too, and the same rule holds: an
+  // unreadable keystroke is kept so the refusal names what the user typed.
+  // The buffer is per row (not per row:field) because there is one field.
+  const [reasoningBuffer, setReasoningBuffer] = useState<ReadonlyMap<number, string>>(new Map())
+  // Per-row validation failures for the reasoning field; cleared on any valid input.
+  const [reasoningErrors, setReasoningErrors] = useState<ReadonlyMap<number, string>>(new Map())
 
   /** Buffer key for one capacity field; the row half moves when rows do. */
   const bufferKey = (index: number, field: CapacityField): string => `${String(index)}:${field}`
@@ -186,6 +243,31 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   /** What a capacity field shows: the buffer while typing, else the stored count. */
   const capacityText = (model: ModelDraft, index: number, field: CapacityField): string =>
     editing.get(bufferKey(index, field)) ?? capacitySpelling(numberOf(model, field))
+
+  /** What the reasoning field shows: the buffer while typing, else the stored list. */
+  const reasoningTextAt = (model: ModelDraft, index: number): string =>
+    reasoningBuffer.get(index) ?? reasoningText(model)
+
+  /** Parse a reasoning keystroke, refusing unknown levels without dropping the text. */
+  const editReasoningField = (index: number, text: string): void => {
+    setReasoningBuffer(current => new Map(current).set(index, text))
+    const levels = parseReasoning(text)
+    if (levels === undefined) {
+      setReasoningErrors((current) => { const next = new Map(current); next.delete(index); return next })
+      patch(index, { reasoningEfforts: undefined })
+      return
+    }
+    const invalid = invalidReasoningLevel(levels)
+    if (invalid !== undefined) {
+      setReasoningErrors(current => new Map(current).set(
+        index,
+        t('modelReasoningInvalid').replace('{level}', () => invalid),
+      ))
+      return
+    }
+    setReasoningErrors((current) => { const next = new Map(current); next.delete(index); return next })
+    patch(index, { reasoningEfforts: editReasoning(models[index] as ModelDraft, levels) })
+  }
 
   /** Drop one row's entries and shift the rows after it down, in one pass. */
   const reindexOnRemove = (
@@ -202,6 +284,16 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     return next
   }
 
+  /** Drop one row's number-keyed entries and shift the rows after it down. */
+  const reindexNumberMap = <T,>(current: ReadonlyMap<number, T>, index: number): Map<number, T> => {
+    const next = new Map<number, T>()
+    for (const [at, value] of current) {
+      if (at === index) continue
+      next.set(at > index ? at - 1 : at, value)
+    }
+    return next
+  }
+
   const toggleExpanded = (index: number): void => {
     setExpanded((current) => {
       const next = new Set(current)
@@ -210,7 +302,9 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     })
   }
 
-  const patch = (index: number, next: Record<string, string | number | undefined>): void => {
+  // Object values (the reasoning mapping) are allowed; the cleared set below
+  // still only empties undefined/'' entries, so an object is written as-is.
+  const patch = (index: number, next: Record<string, string | number | Record<string, string | null> | undefined>): void => {
     onChange(models.map((model, at) => {
       if (at !== index) return model
       // Rebuilt rather than spread over: an emptied optional field has to leave
@@ -383,6 +477,10 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                   return next
                 })
                 setEditing(current => reindexOnRemove(current, index))
+                // The reasoning buffer and its errors are keyed by position too,
+                // so a removal shifts them down with the rows they annotate.
+                setReasoningBuffer(current => reindexNumberMap(current, index))
+                setReasoningErrors(current => reindexNumberMap(current, index))
               }}
             >
               <IconTrash />
@@ -417,6 +515,21 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                     onChange={(event) => { editCapacity(index, 'maxTokens', event.target.value) }}
                   />
                 </label>
+                <label className={styles['modelField']}>
+                  <span className={styles['modelFieldLabel']}>{t('modelReasoningEfforts')}</span>
+                  <input
+                    className={styles['input']}
+                    type="text"
+                    value={reasoningTextAt(model, index)}
+                    placeholder={t('modelReasoningEffortsPlaceholder')}
+                    aria-label={`${t('modelReasoningEfforts')} ${index + 1}`}
+                    disabled={disabled}
+                    onChange={(event) => { editReasoningField(index, event.target.value) }}
+                  />
+                </label>
+                {reasoningErrors.has(index)
+                  ? <p className={styles['error']}>{reasoningErrors.get(index)}</p>
+                  : null}
               </div>
             )
             : null}

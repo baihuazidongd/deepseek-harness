@@ -158,13 +158,94 @@ describe('ModelSelect reasoning effort', () => {
       t={t}
     />)
 
-    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^选择模型/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Pro/ }))
     const toast = await screen.findByRole('alert')
     expect(toast.textContent).toContain('模型操作失败：model-unavailable: session already contains images')
     // The selection failure does not render the in-menu load strip (no Retry).
     expect(screen.queryByRole('button', { name: '重试' })).toBeNull()
+  })
+
+  it('opens straight into the effort pane from the dedicated effort trigger', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state())
+    const select = vi.fn().mockResolvedValue(true)
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={select}
+      t={t}
+    />)
+
+    // The dedicated trigger names the current level, not the model.
+    const effortTrigger = screen.getByRole('button', { name: '选择推理等级，当前 High' })
+    expect(effortTrigger).toBeTruthy()
+    fireEvent.click(effortTrigger)
+    // One click lands on the level list, with no root hop in between.
+    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
+      .toEqual(['Off', 'High', 'MaxLargest budget'])
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Off/ }))
+    expect(select).toHaveBeenCalledWith({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'off',
+    })
+  })
+
+  it('closes the effort pane when the open effort trigger is pressed again', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state())
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    const effortTrigger = screen.getByRole('button', { name: '选择推理等级，当前 High' })
+    fireEvent.click(effortTrigger)
+    expect(screen.getByRole('menuitemradio', { name: 'High' })).toBeTruthy()
+    fireEvent.click(effortTrigger)
+    expect(screen.queryByRole('menuitemradio')).toBeNull()
+  })
+
+  it('hides the effort trigger while the current model offers no reasoning levels', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      groups: [{
+        id: 'deepseek-official',
+        name: 'DeepSeek',
+        models: [{ id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash' }],
+      }],
+    }))
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    expect(screen.queryByRole('button', { name: /^选择推理等级/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /^选择模型/ })).toBeTruthy()
+  })
+
+  it('disables both triggers while the model seat is locked', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state())
+    render(<ModelSelect
+      locked
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '选择推理等级，当前 High' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /^选择模型/ }).disabled).toBe(true)
   })
 
   it('renders no Agent-bound control for an addressed subagent session', () => {

@@ -255,6 +255,27 @@ export class WorkspaceRegistry extends Service {
   }
 
   /**
+   * Restore one archived session to every grouping surface. The write is
+   * idempotent: a not-archived id — including one that never existed —
+   * resolves without touching the durable record, so recovery flows never
+   * need existence checks first.
+   * @param sessionId - The session to unarchive.
+   * @returns resolution after durability.
+   */
+  unarchiveSession(sessionId: SessionId): Promise<void> {
+    return this.enqueueOperation(async () => {
+      // The chain slot serializes against every other registry write, so this
+      // check-then-write pair cannot interleave with another unarchive.
+      const state = this.requireState()
+      if (!state.archivedSessionIds.includes(sessionId)) return
+      await this.setState({
+        ...state,
+        archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
+      })
+    })
+  }
+
+  /**
    * Whether a session is live, header-indexed, or present in a fresh
    * persistence listing. Only a definite miss returns false — a failing
    * `sessionPersistence.list()` propagates so storage faults never

@@ -93,6 +93,19 @@ export function requireDirectHuman(ctx: Context, execution: GoalToolExecution): 
 }
 
 /**
+ * Require authority from a runtime-root agent without demanding direct human
+ * input in the current turn. Automatic goal creation is open to any top-level
+ * turn — a direct human request, a goal round, or a plugin-continued turn —
+ * while live subagents remain excluded.
+ * @param ctx - Context carrying the live agent graph.
+ * @param execution - Authenticated current tool execution.
+ */
+export function requireRootAgent(ctx: Context, execution: GoalToolExecution): void {
+  if (ctx.agents.roots().includes(execution.agent)) return
+  reject('this goal operation requires a top-level agent, not a subagent')
+}
+
+/**
  * Resolve completion authority from either direct human input or the exact goal round.
  * @param ctx - Context carrying live agents and goal state.
  * @param execution - Authenticated current tool execution.

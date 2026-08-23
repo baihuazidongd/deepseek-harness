@@ -8,6 +8,7 @@
     - img
   - tablist:
     - tab "Chat" [selected]
+    - tab "Game"
     - tab "Trajectory"
 - text: Reply with a one-sentence description of event sourcing, then stop. {{clock}}
 - button "Copy":

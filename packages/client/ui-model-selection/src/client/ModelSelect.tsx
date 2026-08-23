@@ -60,7 +60,11 @@ export function ModelSelect(
   const [toast, setToast] = useState<{ seq: number; text: string } | null>(null)
   const toastSeq = useRef(0)
   const rootRef = useRef<HTMLDivElement | null>(null)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  // The model trigger and the dedicated effort trigger sit side by side; the
+  // focus-return target is whichever one opened the menu.
+  const modelTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const effortTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const lastTriggerRef = useRef<HTMLButtonElement | null>(null)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const id = useId()
 
@@ -127,7 +131,18 @@ export function ModelSelect(
   if (!available) return null
 
   const show = (): void => {
+    lastTriggerRef.current = modelTriggerRef.current
     setPane('root')
+    setOpen(true)
+    reload()
+  }
+
+  // The dedicated effort trigger opens straight into the effort pane: the
+  // level list is the whole point of the button, so a root hop would make
+  // the two-trigger seat read as two ways to the same menu.
+  const showEffort = (): void => {
+    lastTriggerRef.current = effortTriggerRef.current
+    setPane('effort')
     setOpen(true)
     reload()
   }
@@ -135,7 +150,7 @@ export function ModelSelect(
   const close = (restoreFocus = false): void => {
     setOpen(false)
     setPane('root')
-    if (restoreFocus) queueMicrotask(() => { triggerRef.current?.focus() })
+    if (restoreFocus) queueMicrotask(() => { lastTriggerRef.current?.focus() })
   }
 
   const moveFocus = (offset: number): void => {
@@ -218,8 +233,31 @@ export function ModelSelect(
 
   return (
     <div ref={rootRef} className={css.root} onKeyDown={onRootKeyDown} onBlur={onBlur}>
+      {reasoning !== undefined && (
+        <button
+          ref={effortTriggerRef}
+          type="button"
+          className={css.effortTrigger}
+          aria-label={t('trigger.effortAria', { effort: effortLabel })}
+          aria-haspopup="menu"
+          aria-expanded={open && pane === 'effort'}
+          aria-controls={open && pane === 'effort' ? `${id}-menu` : undefined}
+          title={effortLabel}
+          disabled={locked}
+          onClick={() => {
+            if (open && pane === 'effort') {
+              close()
+            } else {
+              showEffort()
+            }
+          }}
+        >
+          <span className={clsx(css.triggerEffort, css.effortTriggerLabel)}>{effortLabel}</span>
+          <IconChevronDownOutline14 className={clsx(css.chevron, open && pane === 'effort' && css.chevronOpen)} />
+        </button>
+      )}
       <button
-        ref={triggerRef}
+        ref={modelTriggerRef}
         type="button"
         className={css.trigger}
         aria-label={triggerAria}

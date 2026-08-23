@@ -921,6 +921,48 @@ describe('registry-global session archive', () => {
     expect(storedState(result.pool).archivedSessionIds).toEqual([])
   })
 
+  it('unarchives durably and idempotently, keeping accounting untouched throughout', async () => {
+    const dir = await makeDir('unarchive-home')
+    const result = await harness({ sessions: [header('kept', dir, 100)] })
+    const workspace = result.registry.list()[0]!
+    await result.registry.archiveSession(SessionId('kept'))
+    expect(workspace.sessionIds).toContain('kept')
+    const changesAfterArchive = result.changes.filter(change => change.table === '').length
+
+    // An id that was never archived — including one that never existed — is a
+    // no-op success, not an error: recovery flows need no existence checks.
+    await result.registry.unarchiveSession(SessionId('never-archived'))
+    expect(result.registry.archivedSessionIds).toEqual(['kept'])
+    expect(result.changes.filter(change => change.table === '').length).toBe(changesAfterArchive)
+
+    await result.registry.unarchiveSession(SessionId('kept'))
+    expect(result.registry.archivedSessionIds).toEqual([])
+    expect(storedState(result.pool).archivedSessionIds).toEqual([])
+    // Unarchiving never touches the workspace account.
+    expect(workspace.sessionIds).toContain('kept')
+
+    const changesAfterUnarchive = result.changes.filter(change => change.table === '').length
+    await result.registry.unarchiveSession(SessionId('kept'))
+    expect(result.changes.filter(change => change.table === '').length).toBe(changesAfterUnarchive)
+  })
+
+  it('restores the unarchived set across restarts', async () => {
+    const dir = await makeDir('unarchive-restart')
+    const pool = new MemoryMediaPool()
+    const first = await harness({ pool, sessions: [header('s1', dir, 100)] })
+    await first.registry.archiveSession(SessionId('s1'))
+    await first.fiber.dispose()
+
+    const second = await harness({ pool, sessions: [header('s1', dir, 100)] })
+    expect(second.registry.archivedSessionIds).toEqual(['s1'])
+    await second.registry.unarchiveSession(SessionId('s1'))
+    await second.fiber.dispose()
+
+    const third = await harness({ pool, sessions: [header('s1', dir, 100)] })
+    expect(third.registry.archivedSessionIds).toEqual([])
+    await third.fiber.dispose()
+  })
+
   it('restores the archive set across restarts and defaults it for pre-field media', async () => {
     const dir = await makeDir('archive-restart')
     const pool = new MemoryMediaPool()

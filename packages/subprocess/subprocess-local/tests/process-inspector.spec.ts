@@ -24,7 +24,7 @@ function fakeInternals() {
   const dirs = new Map<string, string[]>()
   const memories = new Map<string, Buffer>()
   const fds = new Map<number, string>()
-  const kills: Array<[number, NodeJS.Signals]> = []
+  const kills: Array<[number, NodeJS.Signals | 0]> = []
   let nextFd = 10
   let ps = ''
   let tpgid = '0'

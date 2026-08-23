@@ -8,6 +8,7 @@
     - img
   - tablist:
     - tab "Chat" [selected]
+    - tab "Game"
     - tab "Trajectory"
 - text: "Use the bash tool to run exactly: echo WEB_E2E_OK. Then reply with the single word DONE and stop. {{clock}}"
 - button "Copy":
@@ -20,10 +21,9 @@
   - img
   - img
   - text: Think The user wants me to run a simple bash command and reply with "DONE".
-- button "Bash Echo the test string":
+- 'button "Failed Bash Error: unknown tool \"bash\""':
   - img
-  - img
-  - text: Bash Echo the test string
+  - text: "Failed Bash Error: unknown tool \"bash\""
 - button "Think The command executed successfully and output \"WEB_E2E_OK\". I just need to reply with \"DONE\".":
   - img
   - img

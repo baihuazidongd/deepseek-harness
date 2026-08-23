@@ -98,6 +98,22 @@ describe('createFixtureApi commands/skills', () => {
     const missingSession = await api.skills.list(req({ sessionId: sid('fx-nope') }))
     expect(missingSession.result).toMatchObject({ ok: false, error: { code: 'session-not-found' } })
   })
+
+  it('serves the plugin inventory and applies an enablement write to later reads', async () => {
+    const { rpc } = createFixtureFaces()
+    const before = await callRemote<{ entries: { entryId: string; enabled: boolean }[] }>(rpc, 'pluginInventory/list', {})
+    expect(before.entries.map(entry => entry.entryId)).toEqual(['fx-hmr', 'fx-search', 'fx-pending', 'fx-failed', 'fx-lsp'])
+    expect(before.entries.find(entry => entry.entryId === 'fx-lsp')?.enabled).toBe(false)
+
+    const after = await callRemote<{ entries: { entryId: string; enabled: boolean }[] }>(
+      rpc, 'pluginInventory/setEnabled', { request: { entryId: 'fx-lsp', enabled: true } })
+    expect(after.entries.find(entry => entry.entryId === 'fx-lsp')?.enabled).toBe(true)
+
+    const missing = await rpc.call('/api', 'pluginInventory/setEnabled', {
+      args: { request: { entryId: 'fx-nope', enabled: true } },
+    })
+    expect(missing).toMatchObject({ ok: false, error: { code: 'internal', message: 'unknown loader entry id fx-nope' } })
+  })
 })
 
 describe('FixtureApiClient command/skill dispatch', () => {
