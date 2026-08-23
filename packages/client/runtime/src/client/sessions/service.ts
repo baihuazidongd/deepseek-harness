@@ -715,10 +715,11 @@ export class SessionRuntime implements ISessions {
       }
     }
     const persisted = this.selection.getSnapshot().sessionId
-    // No current (cleared, or masked gap) wipes the persisted cell — a reload
-    // stays on empty; the in-memory selection still resurfaces a masked id.
     if (current === undefined) {
-      if (persisted !== undefined) this.selection.set({})
+      // An explicit clear (manager selection undefined) wipes the persisted
+      // cell so a reload stays on empty; a masked gap keeps it, letting the id
+      // resurface when its session reappears in the projection.
+      if (persisted !== undefined && this.manager.selectedId === undefined) this.selection.set({})
     } else if (byId[current] !== undefined
       && (persisted !== current
         || this.selection.getSnapshot().subagentAddress?.childSessionId !== currentAddress?.childSessionId

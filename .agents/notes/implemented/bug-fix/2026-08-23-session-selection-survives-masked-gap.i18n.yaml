@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-23-session-selection-survives-masked-gap.md
+2026-08-23-session-selection-survives-masked-gap.md: e8394beaf344653b44f451160810ab2824d615aa
+2026-08-23-session-selection-survives-masked-gap.zh.md: 6cc60b01560e1f0874a4d5777cee796ccbe25491

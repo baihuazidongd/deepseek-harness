@@ -32,7 +32,8 @@ export interface ProcessInspectorInternals {
   read(fd: number, buffer: Buffer, length: number, position: number): number
   close(fd: number): void
   exec(file: string, args: string[]): string
-  kill(pid: number, signal: NodeJS.Signals): void
+  /** Signal `0` probes liveness without delivering a signal. */
+  kill(pid: number, signal: NodeJS.Signals | 0): void
 }
 
 /* v8 ignore start -- thin OS bindings; injected logic is unit-tested and real platform composition exercises them. */
@@ -357,6 +358,57 @@ class MacProcessInspector extends PosixProcessInspector {
 }
 
 /**
+ * Windows has no POSIX process groups or sessions: foreground-group detection
+ * and stdin-waiting probes are unavailable, tracked tree identity collapses to
+ * the spawned root, and group signalling force-terminates the whole tree via
+ * `taskkill /T /F` (ConPTY close plus taskkill cover descendant cleanup).
+ */
+class WindowsProcessInspector implements ProcessInspector {
+  constructor(private readonly internals: ProcessInspectorInternals) {}
+
+  foregroundPgid(_shellPid: number): number | undefined {
+    return undefined
+  }
+
+  isStdinWaiting(_pgid: number): boolean {
+    return false
+  }
+
+  processTree(rootPid: number): ProcessIdentity[] {
+    // Only the root identity is tracked; PID-reuse guards compare this start
+    // identity, while real descendant termination stays with ConPTY/taskkill.
+    return [{ pid: rootPid, started: String(rootPid) }]
+  }
+
+  processSession(_sessionId: number): ProcessIdentity[] {
+    return []
+  }
+
+  isAlive(identity: ProcessIdentity): boolean {
+    try {
+      this.internals.kill(identity.pid, 0)
+      return true
+    } catch (_absentOrInaccessibleProcess) {
+      return false
+    }
+  }
+
+  signalGroup(pgid: number, _signal: SubprocessTerminalSignal): void {
+    // No negative-pid group kill exists on Windows; terminate the whole tree.
+    this.internals.exec('taskkill', ['/PID', String(pgid), '/T', '/F'])
+  }
+
+  signalProcess(identity: ProcessIdentity, signal: 'SIGTERM' | 'SIGKILL'): void {
+    if (!this.isAlive(identity)) return
+    try {
+      this.internals.kill(identity.pid, signal)
+    } catch (_exitedDuringSignal) {
+      // The exact identity was rechecked; a same-tick exit is success.
+    }
+  }
+}
+
+/**
  * Create the supported platform inspector or fail at plugin load.
  * @param platform - target Node platform.
  * @param arch - target CPU architecture for Linux syscall numbers.
@@ -370,5 +422,6 @@ export function createProcessInspector(
 ): ProcessInspector {
   if (platform === 'linux') return new LinuxProcessInspector(arch, internals)
   if (platform === 'darwin') return new MacProcessInspector(internals)
+  if (platform === 'win32') return new WindowsProcessInspector(internals)
   throw new Error(`subprocess-local: terminal inspection is unsupported on platform ${platform}`)
 }

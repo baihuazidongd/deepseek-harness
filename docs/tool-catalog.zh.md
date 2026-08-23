@@ -28,7 +28,8 @@
 | `@deepseek-ai/dsh-tool-fs` | `edit`、`read`、`read_image`、`write` | `ctx.tools`、`ctx.fs`、`ctx.systemPrompt`、`ctx.attachments (read_image registration)`、`ctx.llm + an image-capable route (read_image execution)` | `tool/call`、`fs/write-intent or fs/edit-intent for mutations`、`fs/observed after read presence/absence or successful file operation`、`durable attachment (read_image)`、`tool/result` | - | 先读后写／编辑策略由 `@deepseek-ai/dsh-fs-observation-policy` 添加；它是一个 `fs/*` 事件门禁插件，不会改变 schema。加载这些工具的部署按预期也应加载该插件。没有 `ctx.attachments` 时 `read_image` 不会注册；其 schema 与路由无关，执行时除非确切路由的模型声明图像输入，否则拒绝。 |
 | `@deepseek-ai/dsh-tool-fs-search` | `glob`、`grep` | `ctx.tools`、`ctx.subprocess`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn 随包提供的 ripgrep 二进制文件（`@vscode/ripgrep`），并作为普通前台调用运行，绝不作为后台任务；无需在宿主机安装 `rg`，也不经过 shell 层。本目录使用 `sampleOverCapGlobResults: true`；部署必须显式选择该行为。结果超过上限时，会通过可选的 ctx.spillStore 后端保存完整的格式化列表；在共置部署中，如果后端公开本地路径，返回的定位信息可供后续读取／搜索。 |
 | `@deepseek-ai/dsh-tool-terminal` | `terminal_close`、`terminal_list`、`terminal_open`、`terminal_read`、`terminal_send`、`terminal_signal` | `ctx.tools`、`ctx.terminals`、`ctx.systemPrompt`、`ctx.jobs at call time for run_in_background` | `tool/call`、`tool/result` | - | 这 6 个终端工具需要选择启用，用于补充一次性 bash／文件系统工具。`terminal_send(run_in_background: true)` 会注册到 `ctx.jobs`；schema 不包含 TUI、具名按键序列、BEL、调整尺寸、自动启动和跨 agent 共享。 |
-| `@deepseek-ai/dsh-tool-goal` | `create_goal`、`get_goal`、`update_goal` | `ctx.tools`、`ctx.agents`、`ctx.goals`、`ctx.systemPrompt`、`a calling Agent in an authorized open turn` | `tool/call`、`goal/change for mutations`、`tool/result` | - | create、edit、pause 和 resume 要求直接来自人类的根权限；complete 和 blocked 也接受确切的当前 Goal Round。blocked 的默认下限是 3 个获准的 Round。 |
+| `@deepseek-ai/dsh-tool-goal` | `create_goal`、`get_goal`、`update_goal` | `ctx.tools`、`ctx.agents`、`ctx.goals`、`ctx.systemPrompt`、`a calling Agent in an authorized open turn` | `tool/call`、`goal/change for mutations`、`tool/result` | - | create 要求运行时根 agent，可在任意顶层轮次自动运行；edit、pause 和 resume 要求直接来自人类的根权限；complete 和 blocked 也接受确切的当前 Goal Round。blocked 的默认下限是 3 个获准的 Round。 |
+| `@deepseek-ai/dsh-tool-plugin-inventory` | `plugin_inventory` | `ctx.tools`、`ctx.loader`、`ctx.pluginInventory (dsh-host-plugin-inventory)`、`ctx.userPatchPaths at set_enabled time` | `tool/call`、`loader entry enablement plus a persisted user patch row for set_enabled`、`tool/result` | - | 随 standard/code/cordis agent preset 一起发布（不在 TUI base bundle 内）；host plugin-inventory 服务本身由 web 组合挂载，缺少该服务的组合上的 preset 行保持等待。 |
 | `@deepseek-ai/dsh-schedule` | `schedule_create`、`schedule_delete`、`schedule_list` | `ctx.tools`、`ctx.sessions`、Session 持久化、未来创建的 live 根 Agent | `tool/call`、`schedule/change create or delete`、`tool/result` | - | 仅在选择启用的 Schedule 插件加载后创建的 live 根 Agent scope 内注册。版本 1 接受 after_seconds、显式绝对 at 和有界固定速率 every_seconds，并披露 session-local 交付；管理读取与变更必须通过共享的 Session 持久化 barrier。 |
 | `@deepseek-ai/dsh-tool-lsp` | `lsp` | `ctx.tools`、`ctx.lsp`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，因此其模型可见 schema 在更换提供方时保持稳定。运行时要求已注册提供方，例如 `@deepseek-ai/dsh-lsp-stdio`；如果没有提供方，查询会返回结构化 `LSP_UNAVAILABLE` 错误，而不会改变 schema。 |
 | `@deepseek-ai/dsh-tool-ralph` | `ralph` | `ctx.tools`、`ctx.workflowEngine`、`ctx.subagents`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents every fresh round)` | `tool/call`、`tool/result`、`workflow and child session events during execution` | - | 固定的前台工作流会在每个 Round 启动一个全新的结构化子级；模型只能选择不可变目标和可选的 Round 上限。 |
@@ -948,7 +949,7 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
 
 ### `create_goal`
 
-当当前直接人类请求是需要跨自主 Goal Round 持续推进的长期目标时，创建一个持久化的同会话完成目标。即使用户没有明确说「创建目标」，你也可以推断其意图。不要用于简单的单轮工作。执行时会拒绝非人类权限和 subagent 权限。
+当当前请求是需要跨自主 Goal Round 持续推进的长期目标时，创建一个持久化的同会话完成目标。一旦识别出这类长期任务，就在任意顶层轮次——无论是直接人类请求还是插件续作轮——自动创建，无需等待用户提出。不要用于简单的单轮工作。执行时仅拒绝 subagent。
 
 ```json
 {
@@ -1035,6 +1036,45 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
 来源：[`packages/goal/tool-goal/src/index.ts`](../packages/goal/tool-goal/src/index.ts)
 
 create、edit、pause 和 resume 要求直接来自人类的根权限；complete 和 blocked 也接受确切的当前 Goal Round。blocked 的默认下限是 3 个获准的 Round。
+
+<a id="deepseek-aidsh-tool-plugin-inventory"></a>
+
+## `@deepseek-ai/dsh-tool-plugin-inventory`
+
+### `plugin_inventory`
+
+检查并管理本 DeepSeek Harness 部署的插件。操作 `list` 返回每个已配置的插件条目：其 Loader 条目 id、模块名、启用标志、生命周期阶段（`pending` | `loading` | `active` | `failed` | `unloading` | 无存活 fiber 时为 `null`）、来源（`native` 为产品自带 bundle，`library` 为用户安装进 profile 的包），以及可用时的包声明描述/版本。操作 `set_enabled` 按条目 id 翻转启用状态：改动立即热生效（无需重启）并持久化进所启动 profile 的用户 patch 层（cordis.patch.yml），因此在重启后保留。安装新插件先走镜像：`dsh mirror create <profile>-mirror --from <profile>` 把线上组合复制成一次性 profile，`dsh plugin --profile <profile>-mirror add <package>` 在那里安装插件，向镜像的 cordis.patch.yml 追加 insert 块（`- insert:` 加两空格缩进的 `- id: <自选id>` 与 `name: <包名>` 对——裸的顶层 `{ id, name }` 行是对已有条目的覆盖，未知 id 会被跳过），然后 `dsh mirror launch <profile>-mirror` 在空闲端口把它作为后台 web 实例启动（同一 DSH_HOME，凭据随之可用），应答后打印 URL。在镜像上验证（其 `plugin_inventory` list 显示条目 `active`），把镜像 URL 分享给用户并等待批准；批准后才在正式 profile 上重复安装+patch（所启动 profile 自己的名字，例如 `web`；不确定时询问用户）—— patch 监视器热生效，用 `list` 验证——然后 `dsh mirror stop` 并 `dsh mirror discard` 该镜像（`dsh mirror list` 列出所有镜像及其状态）。阶段为 `failed` 的条目通常是缺包或挂载时抛错的插件；用 `set_enabled` 停用它以恢复树中其余部分。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "operation": {
+      "type": "string",
+      "description": "`list` reads the inventory; `set_enabled` flips one entry's enablement.",
+      "enum": [
+        "list",
+        "set_enabled"
+      ]
+    },
+    "entryId": {
+      "type": "string",
+      "description": "Loader entry id from a previous `list`; required for `set_enabled`."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Desired enablement; required for `set_enabled`."
+    }
+  },
+  "required": [
+    "operation"
+  ]
+}
+```
+
+来源：[`packages/host/tool-plugin-inventory/src/index.ts`](../packages/host/tool-plugin-inventory/src/index.ts)
+
+随 standard/code/cordis agent preset 一起发布（不在 TUI base bundle 内）；host plugin-inventory 服务本身由 web 组合挂载，缺少该服务的组合上的 preset 行保持等待。
 
 <a id="deepseek-aidsh-schedule"></a>
 

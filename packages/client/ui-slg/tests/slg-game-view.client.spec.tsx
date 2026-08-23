@@ -9,8 +9,10 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConversationSnapshot, SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore, PendingWait } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
+import type { PermissionSelect } from '@deepseek-ai/dsh-permission-presets/client'
+import type { CommandDescriptor } from '@deepseek-ai/dsh-commands/types'
 import { SlgGameView, type SlgGameViewProps } from '../src/client/SlgGameView.tsx'
 import { createSlgSettingsStore } from '../src/client/stores.ts'
 import { zh } from '../src/client/locales.ts'
@@ -70,11 +72,21 @@ function snapshot(over: Record<string, unknown> = {}): ConversationSnapshot {
 interface Overrides {
   snap?: Record<string, unknown>
   stats?: unknown
+  permissions?: PermissionSelect
   sessions?: { byId?: Record<string, unknown> }
   sessionId?: SessionId | undefined
   send?: (text: string) => Promise<void>
   stop?: () => Promise<void>
   loadOlder?: () => Promise<void>
+  setPermission?: (id: string) => Promise<boolean>
+  steer?: (text: string) => Promise<void>
+  updateQueue?: (itemId: unknown, action: unknown) => Promise<void>
+  exitPlanMode?: () => Promise<string | null>
+  listCommands?: () => Promise<readonly CommandDescriptor[]>
+  runCommand?: (line: string) => Promise<boolean>
+  plan?: { active: boolean; pending: boolean }
+  pressure?: Record<string, number>
+  breakdown?: Record<string, number>
   modelAvailable?: boolean
   modelDirectory?: ReturnType<typeof createSnapshotStore<ModelDirectoryState>>
   loadModels?: () => void
@@ -89,6 +101,10 @@ function props(over: Overrides = {}): SlgGameViewProps {
   const useSession = (sel: (s: ConversationSnapshot) => unknown) =>
     sessionId === undefined ? undefined : sel(snap)
   const useProjection = (key: string) => {
+    if (key === 'permissions') return over.permissions
+    if (key === 'plan') return over.plan
+    if (key === 'contextPressure') return over.pressure
+    if (key === 'contextBreakdown') return over.breakdown
     if (key !== 'sessionStats') return undefined
     return 'stats' in over ? over.stats : STATS
   }
@@ -116,6 +132,12 @@ function props(over: Overrides = {}): SlgGameViewProps {
     }),
     loadModels: over.loadModels ?? vi.fn(),
     selectModel: over.selectModel ?? vi.fn(() => Promise.resolve(true)),
+    setPermission: over.setPermission ?? vi.fn(() => Promise.resolve(true)),
+    steer: over.steer ?? vi.fn(() => Promise.resolve()),
+    updateQueue: over.updateQueue ?? vi.fn(() => Promise.resolve()),
+    exitPlanMode: over.exitPlanMode ?? vi.fn(() => Promise.resolve(null)),
+    listCommands: over.listCommands ?? vi.fn(() => Promise.resolve([] as readonly CommandDescriptor[])),
+    runCommand: over.runCommand ?? vi.fn(() => Promise.resolve(true)),
     t,
   } as unknown as SlgGameViewProps
 }
@@ -479,12 +501,12 @@ describe('input and send', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('ignores Enter while running', () => {
+  it('queues Enter while running (the send verb rides the queue admission)', () => {
     const send = vi.fn(() => Promise.resolve())
     render(<SlgGameView {...props({ send, snap: { running: true } })} />)
     fireEvent.change(input(), { target: { value: 'hi' } })
     fireEvent.keyDown(input(), { key: 'Enter', isComposing: false })
-    expect(send).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledWith('hi')
   })
 })
 
@@ -675,5 +697,400 @@ describe('chat scrolling', () => {
     Object.defineProperty(chat, 'scrollHeight', { value: 500, configurable: true })
     rerender(<SlgGameView {...props({ snap: { nodes: [userNode(1, '你好'), assistantNode(2, '你好呀')] } })} />)
     expect(chat.scrollTop).toBe(500)
+  })
+})
+
+describe('permission chip', () => {
+  const PERMS: PermissionSelect = {
+    currentValue: 'workspace-write',
+    options: [
+      { value: 'read-only', name: 'Read only' },
+      { value: 'workspace-write', name: 'Workspace Write' },
+      { value: 'danger-full-access', name: 'Full access' },
+    ],
+  }
+  const chipLabel = (name: string) => zh['access.button'].replace('{name}', name)
+
+  it('renders nothing without the permissions projection', () => {
+    render(<SlgGameView {...props()} />)
+    expect(screen.queryByLabelText(/^权限，当前：/)).toBeNull()
+  })
+
+  it('picks a preset through the menu and submits the command verb', () => {
+    const setPermission = vi.fn(() => Promise.resolve(true))
+    render(<SlgGameView {...props({ permissions: PERMS, setPermission })} />)
+    fireEvent.click(screen.getByLabelText(chipLabel('Workspace Write')))
+    fireEvent.click(screen.getByText('Read only'))
+    expect(setPermission).toHaveBeenCalledWith('read-only')
+  })
+
+  it('re-picking the current preset submits nothing', () => {
+    const setPermission = vi.fn(() => Promise.resolve(true))
+    render(<SlgGameView {...props({ permissions: PERMS, setPermission })} />)
+    fireEvent.click(screen.getByLabelText(chipLabel('Workspace Write')))
+    // The open menu's active row shares its label with the trigger; take the row.
+    const rows = screen.getAllByText('Workspace Write')
+    fireEvent.click(rows[rows.length - 1]!)
+    expect(setPermission).not.toHaveBeenCalled()
+  })
+
+  it('gates Full access behind the risk confirmation', () => {
+    const setPermission = vi.fn(() => Promise.resolve(true))
+    render(<SlgGameView {...props({ permissions: PERMS, setPermission })} />)
+    fireEvent.click(screen.getByLabelText(chipLabel('Workspace Write')))
+    fireEvent.click(screen.getByText('Full access'))
+    // The dialog blocks the switch until the acknowledgement is checked.
+    expect(screen.getByText(zh['access.confirm.title'])).toBeDefined()
+    expect(setPermission).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByLabelText(zh['access.confirm.acknowledge']))
+    fireEvent.click(screen.getByText(zh['access.confirm.enable']))
+    expect(setPermission).toHaveBeenCalledWith('danger-full-access')
+  })
+
+  it('cancelling the risk confirmation keeps the current value', () => {
+    const setPermission = vi.fn(() => Promise.resolve(true))
+    render(<SlgGameView {...props({ permissions: PERMS, setPermission })} />)
+    fireEvent.click(screen.getByLabelText(chipLabel('Workspace Write')))
+    fireEvent.click(screen.getByText('Full access'))
+    fireEvent.click(screen.getByText(zh['access.confirm.cancel']))
+    expect(setPermission).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(chipLabel('Workspace Write'))).toBeDefined()
+  })
+})
+
+describe('pending interaction takeovers', () => {
+  const respond = vi.fn(() => Promise.resolve({ accepted: true } as never))
+  const approvalWait = (payload: Record<string, unknown> = {}) => new PendingWait(
+    'approval',
+    'ra1' as never,
+    SID,
+    { approvalId: 'ap-1' as never, toolName: 'bash', ...payload },
+    respond,
+  )
+  const questionWait = (questions: unknown[]) => new PendingWait(
+    'question',
+    'rq1' as never,
+    SID,
+    { questions } as never,
+    respond,
+  )
+  // The carrier wraps every answer into the client-response envelope.
+  const envelope = (rpcId: string, result: unknown) => ({ type: 'client-response', rpcId, result })
+
+  it('answers an approval allow-once through the carrier', () => {
+    render(<SlgGameView {...props({ snap: { pending: [approvalWait({ reason: '危险命令' })] } })} />)
+    expect(screen.getByText(zh['approval.waiting'])).toBeDefined()
+    expect(screen.getByText('危险命令')).toBeDefined()
+    fireEvent.click(screen.getByText(zh['approval.allowOnce']))
+    expect(respond).toHaveBeenCalledWith(envelope(
+      'ra1',
+      { ok: true, value: { sessionId: SID, approvalId: 'ap-1', outcome: 'allowed-once' } },
+    ))
+  })
+
+  it('rejects an approval with the rejected outcome', () => {
+    render(<SlgGameView {...props({ snap: { pending: [approvalWait()] } })} />)
+    fireEvent.click(screen.getByText(zh['approval.reject']))
+    expect(respond).toHaveBeenCalledWith(envelope(
+      'ra1',
+      { ok: true, value: { sessionId: SID, approvalId: 'ap-1', outcome: 'rejected' } },
+    ))
+  })
+
+  it('names the tool when the approval carries no reason', () => {
+    render(<SlgGameView {...props({ snap: { pending: [approvalWait()] } })} />)
+    expect(screen.getByText(zh['approval.escalation'].replace('{name}', 'bash'))).toBeDefined()
+  })
+
+  it('a pending question outranks a pending approval', () => {
+    const wait = questionWait([{ id: 'q1', question: '选哪个？', options: [{ label: '甲' }, { label: '乙' }] }])
+    render(<SlgGameView {...props({ snap: { pending: [approvalWait(), wait] } })} />)
+    expect(screen.getByText('选哪个？')).toBeDefined()
+    expect(screen.queryByText(zh['approval.waiting'])).toBeNull()
+  })
+
+  it('submits one answer batch covering every question', () => {
+    const wait = questionWait([
+      { id: 'q1', question: '单选', options: [{ label: '甲' }, { label: '乙' }] },
+      { id: 'q2', question: '多选', options: [{ label: '丙' }, { label: '丁' }], multiSelect: true },
+    ])
+    render(<SlgGameView {...props({ snap: { pending: [wait] } })} />)
+    // Submit stays blocked until every question is answered or skipped.
+    const submit = screen.getByRole('button', { name: zh['question.submit'] }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+    fireEvent.click(screen.getByText('甲'))
+    fireEvent.click(screen.getByText('丙'))
+    fireEvent.click(screen.getByText('丁'))
+    fireEvent.click(screen.getByText(zh['question.submit']))
+    expect(respond).toHaveBeenCalledWith(envelope(
+      'rq1',
+      {
+        ok: true,
+        value: {
+          sessionId: SID,
+          answer: { answers: [
+            { id: 'q1', selected: ['甲'] },
+            { id: 'q2', selected: ['丙', '丁'] },
+          ] },
+        },
+      },
+    ))
+  })
+
+  it('a custom answer overrides a single-select and supplements a multi-select', () => {
+    const wait = questionWait([
+      { id: 'q1', question: '单选', options: [{ label: '甲' }] },
+      { id: 'q2', question: '多选', options: [{ label: '丙' }], multiSelect: true },
+    ])
+    render(<SlgGameView {...props({ snap: { pending: [wait] } })} />)
+    fireEvent.click(screen.getByText('甲'))
+    fireEvent.click(screen.getByText('丙'))
+    const customs = screen.getAllByPlaceholderText(zh['question.custom'])
+    fireEvent.change(customs[0]!, { target: { value: '都不要' } })
+    fireEvent.change(customs[1]!, { target: { value: '再加一点' } })
+    fireEvent.click(screen.getByText(zh['question.submit']))
+    expect(respond).toHaveBeenCalledWith(envelope(
+      'rq1',
+      {
+        ok: true,
+        value: {
+          sessionId: SID,
+          answer: { answers: [
+            { id: 'q1', selected: [], custom: '都不要' },
+            { id: 'q2', selected: ['丙'], custom: '再加一点' },
+          ] },
+        },
+      },
+    ))
+  })
+
+  it('skipping an unanswered question keeps the batch answerable', () => {
+    const respond2 = vi.fn(() => Promise.resolve({ accepted: true } as never))
+    const wait = new PendingWait(
+      'question', 'rq9' as never, SID,
+      { questions: [{ id: 'q1', question: '开放题' }] },
+      respond2,
+    )
+    render(<SlgGameView {...props({ snap: { pending: [wait] } })} />)
+    fireEvent.click(screen.getByText(zh['question.skip']))
+    fireEvent.click(screen.getByText(zh['question.submit']))
+    expect(respond2).toHaveBeenCalledWith(envelope(
+      'rq9',
+      { ok: true, value: { sessionId: SID, answer: { answers: [{ id: 'q1', selected: [] }] } } },
+    ))
+  })
+
+  it('cancel sends the cancelled error envelope', () => {
+    const wait = questionWait([{ id: 'q1', question: '问', options: [{ label: '甲' }] }])
+    render(<SlgGameView {...props({ snap: { pending: [wait] } })} />)
+    fireEvent.click(screen.getByText(zh['question.cancel']))
+    expect(respond).toHaveBeenCalledWith(envelope(
+      'rq1',
+      { ok: false, error: { code: 'cancelled', message: 'the user closed this question request', details: {} } },
+    ))
+  })
+})
+
+describe('queue strip', () => {
+  const row = (id: string, placement: 'queued' | 'steering' | 'context') =>
+    ({ id, messageId: id, placement, content: [], preview: `text-${id}`, text: `text-${id}` })
+
+  it('renders queued and steering rows and hides context placements', () => {
+    const updateQueue = vi.fn(() => Promise.resolve())
+    render(<SlgGameView {...props({
+      snap: { queue: [row('m1', 'queued'), row('m2', 'steering'), row('m3', 'context')] },
+      updateQueue,
+    })} />)
+    expect(screen.getByText('text-m1')).toBeDefined()
+    expect(screen.getByText('text-m2')).toBeDefined()
+    expect(screen.queryByText('text-m3')).toBeNull()
+    fireEvent.click(screen.getByText(zh['queue.sendNow']))
+    expect(updateQueue).toHaveBeenCalledWith('m1', { kind: 'steer' })
+    fireEvent.click(screen.getByText(zh['queue.remove']))
+    expect(updateQueue).toHaveBeenCalledWith('m1', { kind: 'remove' })
+  })
+
+  it('steering rows carry no row actions', () => {
+    render(<SlgGameView {...props({ snap: { queue: [row('m2', 'steering')] } })} />)
+    expect(screen.getByText(zh['queue.tag.steering'])).toBeDefined()
+    expect(screen.queryByText(zh['queue.sendNow'])).toBeNull()
+    expect(screen.queryByText(zh['queue.remove'])).toBeNull()
+  })
+})
+
+describe('queue and steer submission', () => {
+  it('plain enter queues while running; ctrl+enter steers on ordinary transports', () => {
+    const send = vi.fn(() => Promise.resolve())
+    const steer = vi.fn(() => Promise.resolve())
+    render(<SlgGameView {...props({ snap: { running: true }, send, steer })} />)
+    const inputEl = input()
+    fireEvent.change(inputEl, { target: { value: '插一句' } })
+    fireEvent.keyDown(inputEl, { key: 'Enter', ctrlKey: true })
+    expect(steer).toHaveBeenCalledWith('插一句')
+    expect(send).not.toHaveBeenCalled()
+    fireEvent.change(inputEl, { target: { value: '排队说' } })
+    fireEvent.keyDown(inputEl, { key: 'Enter' })
+    expect(send).toHaveBeenCalledWith('排队说')
+    expect(steer).toHaveBeenCalledTimes(1)
+  })
+
+  it('ctrl+enter does not steer a subagent transport', () => {
+    const steer = vi.fn(() => Promise.resolve())
+    render(<SlgGameView {...props({
+      snap: { running: true, subagent: { address: { mode: 'continuable' }, parentAvailable: true } },
+      steer,
+    })} />)
+    const inputEl = input()
+    fireEvent.change(inputEl, { target: { value: 'x' } })
+    fireEvent.keyDown(inputEl, { key: 'Enter', ctrlKey: true })
+    expect(steer).not.toHaveBeenCalled()
+  })
+})
+
+describe('plan chip', () => {
+  const planTrigger = () => screen.getByRole('button', { name: zh['plan.exit'] })
+
+  it('renders nothing without the projection or while inactive', () => {
+    const { unmount } = render(<SlgGameView {...props()} />)
+    expect(screen.queryByRole('button', { name: zh['plan.exit'] })).toBeNull()
+    unmount()
+    render(<SlgGameView {...props({ plan: { active: false, pending: false } })} />)
+    expect(screen.queryByRole('button', { name: zh['plan.exit'] })).toBeNull()
+  })
+
+  it('shows while active and exits through /plan off', () => {
+    const exitPlanMode = vi.fn(() => Promise.resolve(null))
+    render(<SlgGameView {...props({ plan: { active: true, pending: false }, exitPlanMode })} />)
+    fireEvent.click(planTrigger())
+    expect(exitPlanMode).toHaveBeenCalledTimes(1)
+  })
+
+  it('a pending fold shows the chip for the incoming state', () => {
+    render(<SlgGameView {...props({ plan: { active: false, pending: true } })} />)
+    expect(planTrigger()).toBeDefined()
+  })
+
+  it('surfaces an exit failure in English and keeps the chip clickable again', async () => {
+    let release!: (failure: string | null) => void
+    const exitPlanMode = vi.fn(() => new Promise<string | null>((resolve) => { release = resolve }))
+    render(<SlgGameView {...props({ plan: { active: true, pending: false }, exitPlanMode })} />)
+    fireEvent.click(planTrigger())
+    expect(planTrigger()).toHaveProperty('disabled', true)
+    await act(async () => { release('unknown command: /plan off') })
+    expect(screen.getByRole('status').textContent).toBe('failed to exit plan mode')
+    expect(planTrigger()).toHaveProperty('disabled', false)
+  })
+})
+
+describe('context ring', () => {
+  // The component interpolates the full reading ("45%"), matching the native meter.
+  const ring = (percent: number) =>
+    screen.getByRole('button', { name: t('context.aria', { percent: `${percent}%` }) })
+
+  it('renders nothing until a numerator and a capacity both exist', () => {
+    render(<SlgGameView {...props({ pressure: { pressureTokens: 32_000 } })} />)
+    expect(document.querySelector('[aria-haspopup="dialog"]')).toBeNull()
+  })
+
+  it('opens a panel with the occupancy reading and figures', () => {
+    render(<SlgGameView {...props({ pressure: { pressureTokens: 32_000, contextWindow: 128_000 } })} />)
+    fireEvent.click(ring(25))
+    const panel = screen.getByRole('dialog')
+    expect(within(panel).getByText('25%')).toBeDefined()
+    expect(within(panel).getByText('~32K / 128K')).toBeDefined()
+  })
+
+  it('prefers projectedTokens over the bare sample and clamps at 100%', () => {
+    const { unmount } = render(<SlgGameView {...props({
+      pressure: { pressureTokens: 1_000, projectedTokens: 2_000, contextWindow: 10_000 },
+    })} />)
+    ring(20)
+    unmount()
+    render(<SlgGameView {...props({
+      pressure: { pressureTokens: 200_000, projectedTokens: 900_000, contextWindow: 100_000 },
+    })} />)
+    ring(100)
+  })
+
+  it('breakdown rows appear only with the composition projection', () => {
+    const { unmount } = render(<SlgGameView {...props({
+      pressure: { pressureTokens: 32_000, contextWindow: 128_000 },
+    })} />)
+    fireEvent.click(ring(25))
+    expect(screen.queryByText(zh['context.system'])).toBeNull()
+    unmount()
+    render(<SlgGameView {...props({
+      pressure: { pressureTokens: 32_000, contextWindow: 128_000 },
+      breakdown: { systemTokens: 4_000, toolsTokens: 8_000, messageTokens: 20_000 },
+    })} />)
+    fireEvent.click(ring(25))
+    const panel = screen.getByRole('dialog')
+    expect(within(panel).getByText(zh['context.system'])).toBeDefined()
+    expect(within(panel).getByText(zh['context.tools'])).toBeDefined()
+    expect(within(panel).getByText(zh['context.messages'])).toBeDefined()
+    expect(within(panel).getByText('~4K')).toBeDefined()
+  })
+})
+
+describe('slash command menu', () => {
+  const cmd = (name: string, description: string, input?: { hint: string }): CommandDescriptor =>
+    input === undefined ? { name, description } : { name, description, input }
+  const trigger = () => screen.getByRole('button', { name: zh['slash.open'] })
+
+  it('pulls the catalog once per open and lists rows', async () => {
+    const listCommands = vi.fn(() => Promise.resolve([cmd('plan', 'Toggle plan mode'), cmd('compact', 'Compact now')]))
+    render(<SlgGameView {...props({ listCommands })} />)
+    fireEvent.click(trigger())
+    await screen.findByText('/plan')
+    expect(listCommands).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('/compact')).toBeDefined()
+  })
+
+  it('filters rows by name', async () => {
+    const listCommands = vi.fn(() => Promise.resolve([cmd('plan', 'Toggle plan mode'), cmd('compact', 'Compact now')]))
+    render(<SlgGameView {...props({ listCommands })} />)
+    fireEvent.click(trigger())
+    await screen.findByText('/plan')
+    fireEvent.change(screen.getByPlaceholderText(zh['slash.filter']), { target: { value: 'comp' } })
+    expect(screen.queryByText('/plan')).toBeNull()
+    expect(screen.getByText('/compact')).toBeDefined()
+  })
+
+  it('a bare pick executes and closes; an argued pick inserts into the draft', async () => {
+    const runCommand = vi.fn(() => Promise.resolve(true))
+    const listCommands = vi.fn(() => Promise.resolve([
+      cmd('compact', 'Compact now'),
+      cmd('review', 'Review changes', { hint: 'what to review' }),
+    ]))
+    render(<SlgGameView {...props({ runCommand, listCommands })} />)
+    fireEvent.click(trigger())
+    await screen.findByText('/compact')
+    fireEvent.click(screen.getByText('/compact'))
+    expect(runCommand).toHaveBeenCalledWith('/compact')
+    expect((input() as HTMLInputElement).value).toBe('')
+    fireEvent.click(trigger())
+    await screen.findByText('/review')
+    fireEvent.click(screen.getByText('/review'))
+    expect(runCommand).toHaveBeenCalledTimes(1)
+    expect((input() as HTMLInputElement).value).toBe('/review ')
+  })
+
+  it('an empty or failed pull renders the empty line', async () => {
+    const { unmount } = render(<SlgGameView {...props({
+      listCommands: () => Promise.resolve([]),
+    })} />)
+    fireEvent.click(trigger())
+    await screen.findByText(zh['slash.empty'])
+    unmount()
+    render(<SlgGameView {...props({
+      listCommands: () => Promise.reject(new Error('transport down')),
+    })} />)
+    fireEvent.click(trigger())
+    await screen.findByText(zh['slash.empty'])
+  })
+
+  it('the trigger is disabled without a session', () => {
+    render(<SlgGameView {...props({ sessionId: undefined })} />)
+    expect(trigger()).toHaveProperty('disabled', true)
   })
 })

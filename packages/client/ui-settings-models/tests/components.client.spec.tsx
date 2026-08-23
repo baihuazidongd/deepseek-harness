@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** Section, setup-card, and hand-written editor behavior over a scripted wire face. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
@@ -13,6 +14,7 @@ import { pathOps } from '../src/client/ProviderEditor.tsx'
 import {
   DeepSeekModelsEditor, formatCapacity, modelDrafts, parseCapacity, validateDeepSeekModels,
 } from '../src/client/DeepSeekModelsEditor.tsx'
+import { ModelListEditor } from '../src/client/ModelListEditor.tsx'
 import { apiKeyFailure } from '../src/client/apiKey.ts'
 import { deriveKeyRef, ModelsSettingsStore } from '../src/client/store.ts'
 import type { ProviderRow } from '../src/client/store.ts'
@@ -1330,6 +1332,114 @@ describe('ModelsSection', () => {
       { settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'] },
     )
     expect(failure).toBe('connection lost')
+  })
+})
+
+describe('ModelListEditor reasoning effort levels', () => {
+  const editorApi = { llm: { discoverModels: vi.fn() } } as never
+  const probe = { settingsNs: 'llm-pi-ai' }
+  const onChange = vi.fn()
+  // The editor is controlled: models flow in from the parent and edits flow out
+  // through onChange. A host component keeps the two in step, as the Models
+  // page does, so row removal re-renders with the surviving rows.
+  const mountEditor = (models: Parameters<typeof ModelListEditor>[0]['models']) => {
+    onChange.mockClear()
+    const Host = ({ initial }: { initial: Parameters<typeof ModelListEditor>[0]['models'] }) => {
+      const [rows, setRows] = useState(initial)
+      return <ModelListEditor
+        models={rows}
+        onChange={(next) => { onChange(next); setRows(next) }}
+        probe={probe}
+        api={editorApi}
+        t={t}
+        disabled={false}
+      />
+    }
+    return render(<Host initial={models} />)
+  }
+  const reasoningInput = (position = 1): HTMLInputElement =>
+    screen.getByLabelText<HTMLInputElement>(`${en.modelReasoningEfforts} ${String(position)}`)
+
+  it('shows the stored levels as a comma-separated list', () => {
+    mountEditor([{ id: 'acme-large', reasoningEfforts: { off: null, high: 'high', max: 'ultra' } }])
+    expandRow(1)
+    expect(reasoningInput().value).toBe('off, high, max')
+  })
+
+  it('writes canonical mappings for typed levels, keeping a matching stored wire spelling', () => {
+    mountEditor([{ id: 'acme-large', reasoningEfforts: { off: null, max: 'ultra' } }])
+    expandRow(1)
+    fireEvent.change(reasoningInput(), { target: { value: 'max, off' } })
+    // The level set is unchanged (order does not matter), so the stored
+    // `max: ultra` spelling survives the reorder.
+    expect(onChange).toHaveBeenCalledWith([{ id: 'acme-large', reasoningEfforts: { max: 'ultra', off: null } }])
+  })
+
+  it('writes canonical spellings when the level set changes', () => {
+    mountEditor([{ id: 'acme-large', reasoningEfforts: { off: null, max: 'ultra' } }])
+    expandRow(1)
+    fireEvent.change(reasoningInput(), { target: { value: 'off, low, high' } })
+    expect(onChange).toHaveBeenCalledWith([{ id: 'acme-large', reasoningEfforts: { off: null, low: 'low', high: 'high' } }])
+  })
+
+  it('refuses an unknown level, keeps the typed text, and names the level', () => {
+    mountEditor([{ id: 'acme-large' }])
+    expandRow(1)
+    fireEvent.change(reasoningInput(), { target: { value: 'off, turbo' } })
+    expect(onChange).not.toHaveBeenCalled()
+    expect(reasoningInput().value).toBe('off, turbo')
+    expect(screen.getByText(en.modelReasoningInvalid.replace('{level}', () => 'turbo'))).toBeTruthy()
+  })
+
+  it('clears the field by removing the declared levels from the profile', () => {
+    mountEditor([{ id: 'acme-large', reasoningEfforts: { off: null, high: 'high' } }])
+    expandRow(1)
+    fireEvent.change(reasoningInput(), { target: { value: '' } })
+    expect(onChange).toHaveBeenCalledWith([{ id: 'acme-large' }])
+  })
+
+  it('carries a typed reasoning buffer and its error down when a row above is removed', () => {
+    mountEditor([{ id: 'row-a' }, { id: 'row-b' }])
+    expandRow(2)
+    fireEvent.change(reasoningInput(2), { target: { value: 'turbo' } })
+    expect(screen.getByText(en.modelReasoningInvalid.replace('{level}', () => 'turbo'))).toBeTruthy()
+
+    fireEvent.click(screen.getAllByLabelText(new RegExp(en.removeModel))[0] as HTMLElement)
+    // The typed (still invalid) text follows the row down; its error does too.
+    expect(reasoningInput(1).value).toBe('turbo')
+    expect(screen.getByText(en.modelReasoningInvalid.replace('{level}', () => 'turbo'))).toBeTruthy()
+  })
+
+  it('drops a reasoning buffer together with the row that owns it', () => {
+    mountEditor([{ id: 'row-a' }, { id: 'row-b' }])
+    expandRow(1)
+    fireEvent.change(reasoningInput(1), { target: { value: 'turbo' } })
+    expect(screen.getByText(en.modelReasoningInvalid.replace('{level}', () => 'turbo'))).toBeTruthy()
+
+    fireEvent.click(screen.getAllByLabelText(new RegExp(en.removeModel))[0] as HTMLElement)
+    // The removed row's buffer and error go with it; the surviving row below
+    // shifts up and starts clean (its own disclosure was never opened).
+    expandRow(1)
+    expect(reasoningInput(1).value).toBe('')
+    expect(screen.queryByText(en.modelReasoningInvalid.replace('{level}', () => 'turbo'))).toBeNull()
+  })
+
+  it('keeps a reasoning buffer in place when a row below is removed', () => {
+    mountEditor([{ id: 'row-a' }, { id: 'row-b' }])
+    expandRow(1)
+    fireEvent.change(reasoningInput(1), { target: { value: 'turbo' } })
+
+    fireEvent.click(screen.getAllByLabelText(new RegExp(en.removeModel))[1] as HTMLElement)
+    // The row below is gone; the buffer above is untouched.
+    expect(reasoningInput(1).value).toBe('turbo')
+  })
+
+  it('treats a non-object stored reasoning value as an empty declaration', () => {
+    mountEditor([{ id: 'acme-large', reasoningEfforts: 'off' }])
+    expandRow(1)
+    expect(reasoningInput().value).toBe('')
+    fireEvent.change(reasoningInput(), { target: { value: 'low, max' } })
+    expect(onChange).toHaveBeenCalledWith([{ id: 'acme-large', reasoningEfforts: { low: 'low', max: 'max' } }])
   })
 })
 

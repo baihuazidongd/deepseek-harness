@@ -10,6 +10,7 @@
     - img
   - tablist:
     - tab "Chat" [selected]
+    - tab "Game"
     - tab "Trajectory"
 - text: Explain event sourcing in one sentence. {{clock}}
 - button "Copy":

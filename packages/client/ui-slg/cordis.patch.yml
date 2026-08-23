@@ -1,0 +1,7 @@
+# The ui-slg bundle patch: one insert for the live-room conversation surface.
+# Applied when a profile lists @deepseek-ai/dsh-client-ui-slg in
+# dsh.profile.bundles (dsh plugin --profile <name> add maintains that list);
+# the 插件 management panel toggles the row through the profile's user layer.
+- insert:
+    - id: ui-slg
+      name: '@deepseek-ai/dsh-client-ui-slg'

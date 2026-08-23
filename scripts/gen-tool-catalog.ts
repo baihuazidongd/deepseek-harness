@@ -51,6 +51,9 @@ import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
 import * as ToolGoal from '@deepseek-ai/dsh-tool-goal'
+import Loader from '@deepseek-ai/cordis-plugin-loader'
+import PluginInventoryGateway from '@deepseek-ai/dsh-host-plugin-inventory'
+import * as ToolPluginInventory from '@deepseek-ai/dsh-tool-plugin-inventory'
 import * as ToolSchedule from '@deepseek-ai/dsh-schedule'
 import Lsp from '@deepseek-ai/dsh-lsp'
 import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
@@ -353,7 +356,21 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolGoal)
     },
     note:
-      'create, edit, pause, and resume require direct-human root authority; complete and blocked also accept the exact current goal round. The default blocked lower bound is three admitted rounds.',
+      'create requires a runtime-root agent and may run automatically in any top-level turn; edit, pause, and resume require direct-human root authority; complete and blocked also accept the exact current goal round. The default blocked lower bound is three admitted rounds.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-plugin-inventory',
+    dir: 'tool-plugin-inventory',
+    source: 'packages/host/tool-plugin-inventory/src/index.ts',
+    requires: ['ctx.tools', 'ctx.loader', 'ctx.pluginInventory (dsh-host-plugin-inventory)', 'ctx.userPatchPaths at set_enabled time'],
+    writes: ['tool/call', 'loader entry enablement plus a persisted user patch row for set_enabled', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(Loader)
+      await ctx.plugin(PluginInventoryGateway)
+      await ctx.plugin(ToolPluginInventory)
+    },
+    note:
+      'Shipped under the standard/code/cordis agent presets (not the TUI base bundle); the host plugin-inventory service itself is mounted by the web composition, and preset rows on a composition without it stay waiting.',
   },
   {
     pkg: '@deepseek-ai/dsh-schedule',

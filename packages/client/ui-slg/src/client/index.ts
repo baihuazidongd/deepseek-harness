@@ -34,7 +34,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'slg'
 
 /** Required services: the slot registry, the room copy, and the sessions domain for scope/binding reads. */
-export const inject = ['slots', 'locale', 'sessions', 'modelDirectories']
+export const inject = ['slots', 'locale', 'sessions', 'modelDirectories', 'remote', 'remote.commands']
 
 /** Resolve the session-scoped conversation face, without failing loud on a not-yet-scoped session. */
 function scopedConversation(sessions: ISessions, id: SessionId): IConversation | undefined {
@@ -100,6 +100,63 @@ export function apply(ctx: ClientContext): void {
         loadOlder: () => {
           if (conversation === undefined) return Promise.reject(new Error('ui-slg: conversation service unavailable'))
           return conversation.loadOlder()
+        },
+        // The permission chip writes through the host `/permission` command —
+        // the same path the composer chip and the /permission popup use.
+        setPermission: (id) => {
+          const session = sessionId === undefined ? undefined : sessions.binding(sessionId)?.session
+          if (session === undefined) return Promise.resolve(false)
+          return session.command(`/permission ${id}`).then(
+            result => result.ok && result.value.matched,
+            () => false,
+          )
+        },
+        // Steering rides the session prompt verb's 'steer' admission (best
+        // effort: a closed delivery window parks the text as the next queue item).
+        steer: (text) => {
+          const session = sessionId === undefined ? undefined : sessions.binding(sessionId)?.session
+          if (session === undefined) return Promise.reject(new Error('ui-slg: session unavailable'))
+          return session.prompt([{ type: 'text', text }], 'steer').then((result) => {
+            if (!result.ok) throw new Error(`ui-slg: steer failed: ${result.error.code}: ${result.error.message}`)
+          })
+        },
+        updateQueue: (itemId, action) => {
+          const session = sessionId === undefined ? undefined : sessions.binding(sessionId)?.session
+          if (session === undefined) return Promise.reject(new Error('ui-slg: session unavailable'))
+          return session.updateQueue(itemId, action).then((result) => {
+            if (!result.ok) throw new Error(`ui-slg: queue update failed: ${result.error.code}: ${result.error.message}`)
+          })
+        },
+        // The plan chip exits through the host /plan command (failure strings
+        // stay English — error-surface policy).
+        exitPlanMode: () => {
+          const session = sessionId === undefined ? undefined : sessions.binding(sessionId)?.session
+          if (session === undefined) return Promise.reject(new Error('ui-slg: session unavailable'))
+          return session.command('/plan off').then((result) => {
+            if (!result.ok) return `${result.error.message} (${result.error.code})`
+            if (!result.value.matched) return 'unknown command: /plan off'
+            return null
+          })
+        },
+        // Slash discovery reads the host command directory; a subagent or a
+        // failed pull resolves empty so the menu simply stays closed.
+        listCommands: () => {
+          if (sessionId === undefined || sessions.subagentAddress(sessionId) !== undefined) {
+            return Promise.resolve([])
+          }
+          return ctx.remote.commands.list(sessionId).then(
+            result => result.ok ? result.value : [],
+            () => [],
+          )
+        },
+        // Arbitrary slash lines execute through the session command verb.
+        runCommand: (line) => {
+          const session = sessionId === undefined ? undefined : sessions.binding(sessionId)?.session
+          if (session === undefined) return Promise.resolve(false)
+          return session.command(line).then(
+            result => result.ok && result.value.matched,
+            () => false,
+          )
         },
         modelAvailable,
         modelDirectory: directory?.store ?? EMPTY_MODEL_DIRECTORY,

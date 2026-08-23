@@ -567,4 +567,30 @@ describe('Host Workspace increments', () => {
     })
     abort.abort()
   })
+
+  it('unarchives a session out of the global set and streams the set once', async () => {
+    const { api, root } = await harness()
+    const workspace = expectOk(await api.workspace.create(request({ path: stageDir(root, 'unarchive-home') }))).workspace
+    const sessionId = SessionId('session-to-restore')
+    expectOk(await api.sessions.create(request({ workspaceId: workspace.workspaceId, sessionId })))
+    expectOk(await api.workspace.archiveSession(request({ sessionId })))
+
+    // Idempotent no-ops (never archived, unknown) answer the full set without
+    // emitting anything — recovery needs no existence checks.
+    expect(expectOk(await api.workspace.unarchiveSession(request({ sessionId: SessionId('session-stray') }))).archivedSessionIds)
+      .toEqual([sessionId])
+    expect(expectOk(await api.workspace.unarchiveSession(request({ sessionId: SessionId('session-ghost') }))).archivedSessionIds)
+      .toEqual([sessionId])
+
+    const abort = new AbortController()
+    const stream: AsyncIterator<RpcRequest<HostFrame>> =
+      api.events.host(request({}), abort.signal)[Symbol.asyncIterator]()
+    const restored = nextHostFrame(stream)
+    expect(expectOk(await api.workspace.unarchiveSession(request({ sessionId }))).archivedSessionIds)
+      .toEqual([])
+    expect(await restored).toMatchObject({
+      payload: { type: 'host/archived-sessions-changed', archivedSessionIds: [] },
+    })
+    abort.abort()
+  })
 })

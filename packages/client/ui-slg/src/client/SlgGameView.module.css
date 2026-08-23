@@ -292,6 +292,206 @@
 .inputLine input::placeholder {
   color: var(--dsw-alias-label-caption);
 }
+.permChip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.permChip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.permChevron {
+  display: inline-flex;
+  transition: transform 0.15s ease;
+}
+.permChevronOpen {
+  transform: rotate(180deg);
+}
+
+/* ── Pending interaction takeovers (approval / question) ─────────────────── */
+.pendingStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pendingCard {
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-base);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.approvalCard {
+  border-color: var(--dsw-alias-state-warn-primary);
+}
+.pendingStrip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dsw-alias-state-warn-label);
+}
+.pendingDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-warn-primary);
+  animation: pendingPulse 1.2s ease-in-out infinite;
+}
+@keyframes pendingPulse {
+  50% { opacity: 0.35; }
+}
+.pendingHeadline {
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  word-break: break-all;
+}
+.pendingActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pendingActions button {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.pendingActions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pendingPrimary {
+  border-color: var(--dsw-alias-state-warn-primary) !important;
+  color: var(--dsw-static-neutral-00) !important;
+  background: var(--dsw-alias-state-warn-primary) !important;
+  font-weight: 700;
+}
+.questionItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.questionText {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.questionTag {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-caption);
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.questionOption {
+  text-align: left;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.questionOptionOn {
+  border-color: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-state-business-primary);
+}
+.questionDesc {
+  font-size: 12px;
+  color: var(--dsw-alias-label-caption);
+}
+.questionCustom {
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  padding: 0 10px;
+  font-size: 13px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  outline: none;
+}
+.questionSkip {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ── Transient queue strip ───────────────────────────────────────────────── */
+.queueStrip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.queueRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-caption);
+}
+.queueRow[data-placement='steering'] .queueTag {
+  border-color: var(--dsw-alias-state-warn-primary);
+  color: var(--dsw-alias-state-warn-label);
+}
+.queueTag {
+  flex: 0 0 auto;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+.queuePreview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queueActions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+}
+.queueActions button {
+  border: none;
+  background: none;
+  color: var(--dsw-alias-state-business-primary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
 .send {
   height: 40px;
   padding: 0 22px;
@@ -711,4 +911,220 @@
 .regionBtnOn {
   color: var(--dsw-static-red-400);
   border-color: var(--dsw-static-red-400);
+}
+
+/* 计划模式退出 chip */
+.planChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 12px;
+  border: 1px solid var(--dsw-static-red-400);
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-static-red-400);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.planChip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.planChipClose {
+  font-size: 13px;
+  line-height: 1;
+}
+.planError {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 斜杠命令触发钮与菜单 */
+.slashTrigger {
+  flex: none;
+  width: 28px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.slashTrigger:hover:not(:disabled) {
+  color: var(--dsw-static-red-400);
+  border-color: var(--dsw-static-red-400);
+}
+.slashTrigger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.slashMenu {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+}
+.slashFilter {
+  height: 30px;
+  margin-bottom: 4px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  outline: none;
+}
+.slashRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.slashRow:hover {
+  background: var(--dsw-alias-bg-layer-2);
+}
+.slashName {
+  flex: none;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dsw-static-red-400);
+}
+.slashDesc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.slashEmpty {
+  padding: 10px 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* 上下文占用圆环与展开面板 */
+.ringWrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.ringTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.ringTrack,
+.ringFill {
+  fill: none;
+  stroke-width: 2;
+}
+.ringTrack {
+  stroke: var(--dsw-alias-border-l3);
+}
+.ringFill {
+  stroke: var(--dsw-static-red-400);
+  stroke-linecap: round;
+}
+.contextPanel {
+  position: absolute;
+  right: 0;
+  bottom: 36px;
+  z-index: 7;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+}
+.contextHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.contextPercent {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+}
+.contextFigures {
+  font-size: 11px;
+  color: var(--dsw-alias-label-caption);
+}
+.contextBar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-2);
+}
+.contextSegment {
+  height: 100%;
+  min-width: 1px;
+  background: var(--dsw-alias-label-secondary);
+}
+.colorSystem {
+  background: var(--dsw-static-neutral-00);
+}
+.colorTools {
+  background: var(--dsw-static-red-400);
+}
+.colorMessages {
+  background: var(--dsw-alias-label-secondary);
+}
+.contextRows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+.contextRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.contextRow > dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+.contextRow > dd {
+  margin: 0;
+  font-size: 11px;
+  color: var(--dsw-alias-label-primary);
+}
+.contextSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
 }

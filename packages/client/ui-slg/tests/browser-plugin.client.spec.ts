@@ -32,12 +32,18 @@ async function bench() {
   ctx.provide('modelDirectories', {
     directoryFor: vi.fn(() => { throw new Error('no scope in bench') }),
   })
+  const commandsRemote = {
+    list: vi.fn(() => Promise.resolve({ ok: true, value: [] })),
+    execute: vi.fn(() => Promise.resolve({ ok: false, error: { code: 'unavailable', message: 'bench' } })),
+  }
+  ctx.provide('remote', { commands: commandsRemote })
+  ctx.provide('remote.commands', commandsRemote)
   return { ctx, slots }
 }
 
 describe('apply', () => {
   it('declares the services it binds', () => {
-    expect(inject).toEqual(['slots', 'locale', 'sessions', 'modelDirectories'])
+    expect(inject).toEqual(['slots', 'locale', 'sessions', 'modelDirectories', 'remote', 'remote.commands'])
   })
 
   it('registers the room into the conversation slot at a shadowing priority', async () => {
@@ -80,6 +86,57 @@ describe('apply', () => {
     await expect(face!.stop()).rejects.toThrow('conversation service unavailable')
   })
 
+  it('plan/slash verbs ride the session command verb and the command directory', async () => {
+    const command = vi.fn((line: string) =>
+      Promise.resolve({ ok: true, value: { matched: line !== '/nope' } }))
+    const list = vi.fn(() => Promise.resolve({
+      ok: true as const,
+      value: [{ name: 'compact', description: 'Compact now' }],
+    }))
+    const ctx = new Context()
+    await ctx.plugin(SlotRegistry).await()
+    const slots = ctx.get('slots') as SlotRegistry
+    slots.register(
+      { name: 'root', children: { 'conversation': { kind: 'single', scope: 'session-maybe' } } } as never,
+      () => null,
+    )
+    ctx.provide('locale', new LocaleRuntime(ctx))
+    ctx.provide('sessions', {
+      scope: () => undefined,
+      binding: (id: unknown) => id === 's1' ? { session: { command, updateQueue: vi.fn(), prompt: vi.fn() } } : undefined,
+      subagentAddress: () => undefined,
+    })
+    ctx.provide('modelDirectories', {
+      directoryFor: vi.fn(() => { throw new Error('no scope in bench') }),
+    })
+    const commandsRemote = { list, execute: vi.fn() }
+    ctx.provide('remote', { commands: commandsRemote })
+    ctx.provide('remote.commands', commandsRemote)
+    await ctx.plugin({ inject: [...inject], apply }).await()
+    const entry = slots.entries('conversation')[0]!
+    const face = entry.inject?.('s1' as never) as {
+      exitPlanMode: () => Promise<string | null>
+      runCommand: (line: string) => Promise<boolean>
+      listCommands: () => Promise<readonly { name: string }[]>
+    }
+    await expect(face.exitPlanMode()).resolves.toBeNull()
+    expect(command).toHaveBeenCalledWith('/plan off')
+    await expect(face.runCommand('/compact')).resolves.toBe(true)
+    expect(command).toHaveBeenCalledWith('/compact')
+    // An unmatched line is an admission failure, not a thrown error.
+    await expect(face.runCommand('/nope')).resolves.toBe(false)
+    await expect(face.listCommands()).resolves.toEqual([{ name: 'compact', description: 'Compact now' }])
+    expect(list).toHaveBeenCalledWith('s1')
+  })
+
+  it('listCommands degrades to empty without a session and for subagents', async () => {
+    const { ctx, slots } = await bench()
+    await ctx.plugin({ inject: [...inject], apply }).await()
+    const entry = slots.entries('conversation')[0]!
+    const face = entry.inject?.('s1' as never) as { listCommands: () => Promise<readonly unknown[]> }
+    await expect(face.listCommands()).resolves.toEqual([])
+  })
+
   it('forwards send/stop through a scoped conversation', async () => {
     const ctx = new Context()
     await ctx.plugin(SlotRegistry).await()
@@ -98,6 +155,9 @@ describe('apply', () => {
     ctx.provide('modelDirectories', {
       directoryFor: vi.fn(() => { throw new Error('no scope in bench') }),
     })
+    const commandsRemote = { list: vi.fn(() => Promise.resolve({ ok: true, value: [] })), execute: vi.fn() }
+    ctx.provide('remote', { commands: commandsRemote })
+    ctx.provide('remote.commands', commandsRemote)
     await ctx.plugin({ inject: [...inject], apply }).await()
     const entry = slots.entries('conversation')[0]!
     const face = entry.inject?.('s1' as never) as

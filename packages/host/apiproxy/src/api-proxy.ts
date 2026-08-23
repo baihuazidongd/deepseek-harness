@@ -2918,6 +2918,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         }
         return ok(request, { archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds] })
       },
+
+      async unarchiveSession(request) {
+        const { sessionId } = request.payload
+        await ctx.workspaceRegistry.unarchiveSession(sessionId)
+        return ok(request, { archivedSessionIds: [...ctx.workspaceRegistry.archivedSessionIds] })
+      },
     },
 
     host: {

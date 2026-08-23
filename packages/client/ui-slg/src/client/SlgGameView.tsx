@@ -14,7 +14,8 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import clsx from 'clsx'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ConversationSnapshot, PendingInteraction } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ModelSelection, QueueAction } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -22,8 +23,20 @@ import type { PropsLocale, PropsRuntime, PropsStore, TranslateNS } from '@deepse
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: pull the `sessionStats` SessionProjectionMap key merge.
 import type {} from '@deepseek-ai/dsh-session-stats/client'
+// Type-only: pull the `permissions` SessionProjectionMap key merge (the chip's
+// payload type is imported concretely in PermissionChip.tsx).
+import type {} from '@deepseek-ai/dsh-permission-presets/client'
+// Type-only: the `contextPressure` / `contextBreakdown` projection key merges.
+import type {} from '@deepseek-ai/dsh-token-meter/client'
+// Type-only: the `plan` SessionProjectionMap key merge.
+import type {} from '@deepseek-ai/dsh-plan-mode/client'
+import type { CommandDescriptor } from '@deepseek-ai/dsh-commands/types'
 import { SLG_SETTINGS_DEFAULTS } from './stores.ts'
 import type { createSlgSettingsStore, SlgDmRegion, SlgSettingsState } from './stores.ts'
+import { PermissionChip } from './PermissionChip.tsx'
+import { ApprovalCard, QuestionCard, QueueStrip } from './Interactions.tsx'
+import type { ApprovalWait, QuestionWait } from './Interactions.tsx'
+import { ContextRing, CommandMenu, PlanChip, planTarget } from './InputExtras.tsx'
 import type { SlgKey } from './locales.ts'
 import css from './SlgGameView.module.css'
 
@@ -50,6 +63,45 @@ export interface SlgGameViewInjected {
    * @returns whether the host accepted the selection.
    */
   selectModel: (selection: ModelSelection) => Promise<boolean>
+  /**
+   * Submit `/permission <id>` for the current session — the same write path
+   * the composer chip and the /permission popup use.
+   * @param id - the preset value to switch to.
+   * @returns whether the host accepted the command.
+   */
+  setPermission: (id: string) => Promise<boolean>
+  /**
+   * Submit the text as a steering message into the session's live turn.
+   * @param text - prompt text, sent verbatim as one text block.
+   * @returns completion; failures reject (the caller restores the draft).
+   */
+  steer: (text: string) => Promise<void>
+  /**
+   * Apply one mutation to a pending queue occurrence.
+   * @param itemId - agent-owned inbox occurrence identity.
+   * @param action - remove or strict-steer the row.
+   * @returns completion; failures reject.
+   */
+  updateQueue: (
+    itemId: ConversationSnapshot['queue'][number]['id'],
+    action: QueueAction,
+  ) => Promise<void>
+  /**
+   * Leave plan mode by executing /plan off against the session.
+   * @returns null on admitted execution; a user-visible failure line otherwise.
+   */
+  exitPlanMode: () => Promise<string | null>
+  /**
+   * List the session's host command catalog (slash discovery).
+   * @returns the descriptors; resolves empty when the session exposes none.
+   */
+  listCommands: () => Promise<readonly CommandDescriptor[]>
+  /**
+   * Execute one slash-command line against the session's agent.
+   * @param line - complete command line including the leading slash.
+   * @returns whether the host admitted and matched it.
+   */
+  runCommand: (line: string) => Promise<boolean>
 }
 
 /** Full composed props: conversation runtime share (session-maybe) + locale + settings store + injected verbs. */
@@ -154,6 +206,9 @@ function formatCount(value: number): string {
 
 /** Stable empty node list for the no-session reads (keeps memo identity flat). */
 const EMPTY_NODES: readonly ConversationNode[] = []
+/** Stable empty pending/queue lists for the no-session reads. */
+const EMPTY_PENDING: readonly PendingInteraction[] = []
+const EMPTY_QUEUE: ConversationSnapshot['queue'] = []
 
 /**
  * Flatten a session's nodes into speakable lines: user text, assistant text,
@@ -285,7 +340,8 @@ function RoomView(props: RoomBaseProps & { settings: SettingsFace }) {
   const {
     useSession, useProjection, useSessions, sessionId,
     send, stop, loadOlder, t,
-    modelAvailable, modelDirectory, loadModels, selectModel,
+    modelAvailable, modelDirectory, loadModels, selectModel, setPermission,
+    steer, updateQueue, exitPlanMode, listCommands, runCommand,
   } = props
   const [draft, setDraft] = useState('')
   const [danmakuOn, setDanmakuOn] = useState(true)
@@ -329,7 +385,25 @@ function RoomView(props: RoomBaseProps & { settings: SettingsFace }) {
   const hasMore = useSession(s => s.hasMore) ?? false
   const loadingOlder = useSession(s => s.loadingOlder) ?? false
   const stats = useProjection('sessionStats')
+  const permissions = useProjection('permissions')
   const sessionRows = useSessions(s => s.byId)
+  // Interaction takeovers and the transient inbox ride the session snapshot.
+  const pending = useSession(s => s.pending) ?? EMPTY_PENDING
+  const queue = useSession(s => s.queue) ?? EMPTY_QUEUE
+  const subagent = useSession(s => s.subagent) ?? null
+  // A pending question outranks a pending approval (the composer chain's own
+  // election order); the survivor re-elects the moment either settles.
+  const question = pending.find((i): i is QuestionWait => i.kind === 'question')
+  const approval = question === undefined
+    ? pending.find((i): i is ApprovalWait => i.kind === 'approval')
+    : undefined
+  // Projection-fed extras: plan-mode state and the context figures.
+  const plan = useProjection('plan')
+  const [planLeaving, setPlanLeaving] = useState(false)
+  const [planError, setPlanError] = useState<string | null>(null)
+  // Slash discovery: the catalog pulls once per open; a failure resolves empty.
+  const [slashOpen, setSlashOpen] = useState(false)
+  const [commands, setCommands] = useState<readonly CommandDescriptor[]>([])
 
   // History pages in on demand, so the navigator covers the whole conversation.
   // A failed pull stops auto-paging (hasMore stays true; retry on session switch).
@@ -513,9 +587,48 @@ function RoomView(props: RoomBaseProps & { settings: SettingsFace }) {
 
   const submit = () => {
     const text = draft.trim()
-    if (text === '' || running) return
+    if (text === '') return
+    // send rides the conversation service's 'queue' admission, so a busy
+    // turn parks the text in the transient inbox instead of dropping it.
     setDraft('')
     void send(text)
+  }
+
+  /** Ctrl/Cmd+Enter while running steers the live turn; failure restores the draft. */
+  const steerSubmit = () => {
+    const text = draft.trim()
+    if (text === '' || !running || subagent !== null) return
+    setDraft('')
+    void steer(text).catch(() => { setDraft(text) })
+  }
+
+  /** Leave plan mode through the injected verb; failures surface in English. */
+  const exitPlan = () => {
+    setPlanLeaving(true)
+    setPlanError(null)
+    void exitPlanMode().then((failure) => {
+      setPlanLeaving(false)
+      setPlanError(failure)
+    }, (reason: unknown) => {
+      setPlanLeaving(false)
+      setPlanError(reason instanceof Error ? reason.message : String(reason))
+    })
+  }
+
+  /** Open the slash menu with a fresh catalog pull; a failed pull renders empty. */
+  const openSlash = () => {
+    setSlashOpen(true)
+    void listCommands().then(setCommands, () => { setCommands([]) })
+  }
+
+  /** One picked row: argued commands insert into the draft, bare ones execute. */
+  const pickCommand = (command: CommandDescriptor) => {
+    setSlashOpen(false)
+    if (command.input !== undefined) {
+      setDraft(`/${command.name} `)
+      return
+    }
+    void runCommand(`/${command.name}`)
   }
 
   const chatListRef = useRef<HTMLDivElement | null>(null)
@@ -826,6 +939,17 @@ function RoomView(props: RoomBaseProps & { settings: SettingsFace }) {
           )}
         </div>
 
+        {/* 待处理交互：提问优先于审批（与 composer 链选举一致) */}
+        {(question !== undefined || approval !== undefined) && (
+          <div className={css.pendingStack}>
+            {question !== undefined
+              ? <QuestionCard key={question.key} wait={question} t={t} />
+              : approval !== undefined
+                ? <ApprovalCard key={approval.key} wait={approval} t={t} />
+                : null}
+          </div>
+        )}
+
         {/* 视觉小说说话条 */}
         <div className={css.speechBar}>
           <span className={clsx(css.speakerTag, css[speech.role])}>{speaker(speech.role)}</span>
@@ -848,14 +972,39 @@ function RoomView(props: RoomBaseProps & { settings: SettingsFace }) {
         </div>
 
         {/* 底部输入条 */}
+        <QueueStrip rows={queue} updateQueue={updateQueue} t={t} />
+        {slashOpen && (
+          <CommandMenu commands={commands} onPick={pickCommand} t={t} />
+        )}
         <div className={css.inputLine}>
+          <PlanChip target={planTarget(plan)} leaving={planLeaving} onExit={exitPlan} t={t} />
+          {planError !== null && <span className={css.planError} role="status" title={planError}>failed to exit plan mode</span>}
+          <button
+            type="button"
+            className={css.slashTrigger}
+            aria-label={t('slash.open')}
+            title={t('slash.open')}
+            disabled={noSession}
+            onClick={() => { if (slashOpen) { setSlashOpen(false) } else { openSlash() } }}
+          >
+            /
+          </button>
+          <PermissionChip value={permissions} locked={noSession} setPermission={setPermission} t={t} />
           <input
             value={draft}
             placeholder={t('input.placeholder')}
             disabled={noSession}
             onChange={(e) => { setDraft(e.target.value) }}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit() }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+              if (e.ctrlKey || e.metaKey) {
+                steerSubmit()
+                return
+              }
+              submit()
+            }}
           />
+          <ContextRing useProjection={useProjection} t={t} />
           <button
             type="button"
             className={running ? css.stop : css.send}

@@ -232,6 +232,19 @@ export class WorkspaceManager {
   }
 
   /**
+   * Remove one session from the registry-global set, then install the
+   * returned full set without waiting for the changed frame. The mirror of
+   * {@link archiveSession}: same snapshot discipline, opposite membership.
+   * @param sessionId - session to unarchive.
+   * @returns the wire result.
+   */
+  async unarchiveSession(sessionId: SessionId): Promise<RpcResult<{ archivedSessionIds: SessionId[] }>> {
+    const { result } = await this.api.workspace.unarchiveSession({ sessionId })
+    if (result.ok) this.installArchived(result.value.archivedSessionIds)
+    return result
+  }
+
+  /**
    * Host-frame entry. Non-workspace frames are ignored so the runtime can
    * fan one host stream out to both object managers.
    * @param envelope - host stream envelope.

@@ -1711,6 +1711,36 @@
       "source": "packages/client/modules/src/client/manifest.ts"
     },
     {
+      "doc": "docs/subsystems/plugins.md",
+      "symbol": "PluginEntryId",
+      "source": "packages/host/plugin-inventory/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/plugins.md",
+      "symbol": "PluginFiberPhase",
+      "source": "packages/host/plugin-inventory/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/plugins.md",
+      "symbol": "PluginEntrySource",
+      "source": "packages/host/plugin-inventory/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/plugins.md",
+      "symbol": "PluginInventoryEntry",
+      "source": "packages/host/plugin-inventory/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/plugins.md",
+      "symbol": "PluginInventorySnapshot",
+      "source": "packages/host/plugin-inventory/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/plugins.md",
+      "symbol": "PluginInventorySetEnabledRequest",
+      "source": "packages/host/plugin-inventory/src/types.ts"
+    },
+    {
       "doc": "docs/subsystems/session-telemetry.md",
       "symbol": "SessionTelemetrySharingStatus",
       "source": "packages/session/session-telemetry/src/index.ts"

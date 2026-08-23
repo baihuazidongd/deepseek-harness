@@ -1562,7 +1562,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
   let nextWorkspace = 1
   // Registry-global archive set mirroring the host: archived sessions keep
   // their workspace accounting slot and only grouping surfaces hide them.
-  const archivedSessionIds: SessionId[] = []
+  let archivedSessionIds: SessionId[] = []
 
   // In-memory browse tree behind the fixture's `browse` picker capability —
   // deterministic content mirroring the design mock so assembled Web tests
@@ -1722,6 +1722,84 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
       ? { ok: false, error: { code: 'session-not-found', message: `no session ${id}`, details: { sessionId: id } } }
       : undefined
   )
+
+  /** Deterministic Loader-entry projection the plugins page renders and toggles. */
+  type FxPluginEntry = {
+    entryId: string
+    moduleName: string
+    enabled: boolean
+    fiberPhase: 'active' | 'pending' | 'failed' | null
+    source: 'native' | 'library' | null
+    description: string | null
+    version: string | null
+  }
+  const pluginInventoryEntries: FxPluginEntry[] = [
+    {
+      entryId: 'fx-hmr',
+      moduleName: '@deepseek-ai/cordis-plugin-hmr',
+      enabled: true,
+      fiberPhase: 'active',
+      source: 'native',
+      description: 'Cordis HMR plugin: watches config and module roots for live reload.',
+      version: '1.4.0',
+    },
+    {
+      entryId: 'fx-search',
+      moduleName: '@deepseek-ai/dsh-web-search-deepseek',
+      enabled: true,
+      fiberPhase: 'active',
+      source: 'native',
+      description: 'DeepSeek web-search provider for the web capability.',
+      version: '0.1.0-rc.5',
+    },
+    {
+      entryId: 'fx-pending',
+      moduleName: '@fixture/pending-plugin',
+      enabled: true,
+      fiberPhase: 'pending',
+      source: 'native',
+      description: null,
+      version: null,
+    },
+    {
+      entryId: 'fx-failed',
+      moduleName: '@fixture/failed-plugin',
+      enabled: true,
+      fiberPhase: 'failed',
+      source: 'library',
+      description: 'A user-installed library whose mount keeps failing.',
+      version: '0.3.1',
+    },
+    {
+      entryId: 'fx-lsp',
+      moduleName: '@deepseek-ai/dsh-lsp',
+      enabled: false,
+      fiberPhase: null,
+      source: 'native',
+      description: 'Language Server Protocol capability provider.',
+      version: '0.1.0-rc.5',
+    },
+  ]
+  type FxPluginSnapshot = { entries: FxPluginEntry[] }
+  type FxPluginEnablement = { entryId: string; enabled: boolean }
+
+  /** Canonical fixture implementation of the generated plugin inventory Remote contract. */
+  const pluginInventoryRemotes = {
+    list(): RpcResult<FxPluginSnapshot> {
+      return { ok: true, value: { entries: pluginInventoryEntries.map(entry => ({ ...entry })) } }
+    },
+    setEnabled(request: FxPluginEnablement): RpcResult<FxPluginSnapshot> {
+      const entry = pluginInventoryEntries.find(candidate => candidate.entryId === request.entryId)
+      if (entry === undefined) {
+        return {
+          ok: false,
+          error: { code: 'internal', message: `unknown loader entry id ${request.entryId}`, details: {} },
+        }
+      }
+      entry.enabled = request.enabled
+      return pluginInventoryRemotes.list()
+    },
+  }
 
   /** Canonical fixture implementation of the generated Commands Remote contract. */
   const commandRemotes = {
@@ -2689,7 +2767,15 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         if (missing !== undefined) return missing
         const { sessionId } = request.payload
         if (!archivedSessionIds.includes(sessionId)) {
-          archivedSessionIds.push(sessionId)
+          archivedSessionIds = [...archivedSessionIds, sessionId]
+          emitHost({ type: 'host/archived-sessions-changed', archivedSessionIds: [...archivedSessionIds] })
+        }
+        return ok(request, { archivedSessionIds: [...archivedSessionIds] })
+      },
+      unarchiveSession: (request) => {
+        const { sessionId } = request.payload
+        if (archivedSessionIds.includes(sessionId)) {
+          archivedSessionIds = archivedSessionIds.filter(id => id !== sessionId)
           emitHost({ type: 'host/archived-sessions-changed', archivedSessionIds: [...archivedSessionIds] })
         }
         return ok(request, { archivedSessionIds: [...archivedSessionIds] })
@@ -3021,6 +3107,9 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         case 'goals/resume': return Promise.resolve(goalRemotes.resume(sessionId, args.ref as FxGoalRef))
         case 'goals/complete': return Promise.resolve(goalRemotes.complete(sessionId, args.ref as FxGoalRef))
         case 'goals/clear': return Promise.resolve(goalRemotes.clear(sessionId, args.ref as FxGoalRef))
+        case 'pluginInventory/list': return Promise.resolve(pluginInventoryRemotes.list())
+        case 'pluginInventory/setEnabled': return Promise.resolve(
+          pluginInventoryRemotes.setEnabled((payload as { args: { request: FxPluginEnablement } }).args.request))
         default:
           return Promise.reject(new Error(`fixture connection RPC endpoint ${JSON.stringify(endpoint)} is unavailable`))
       }
@@ -3105,6 +3194,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'workspace.insertBefore': return this.api.workspace.insertBefore(request)
       case 'workspace.insertSessionBefore': return this.api.workspace.insertSessionBefore(request)
       case 'workspace.archiveSession': return this.api.workspace.archiveSession(request)
+      case 'workspace.unarchiveSession': return this.api.workspace.unarchiveSession(request)
       case 'skill.list': return this.api.skills.list(request)
       case 'agentPreset.list': return this.api.agentPresets.list(request)
       case 'agentPreset.select': return this.api.agentPresets.select(request)

@@ -10,13 +10,15 @@ dsh 网页 GUI 把会话渲染成标准聊天线程——标签页、消息、�
 
 ## Decision
 
-新增 `@deepseek-ai/dsh-client-ui-slg` 客户端插件包，往框架的 `conversation` 槽位（single、`session-maybe`）以 `priority: -1` 注册。single 槽位渲染其存活条目中优先级最低者，因此直播间遮蔽 ui-conversation 的 ConversationRoot：整个中列渲染成直播间、不新增标签页。视图是纯展示组件（`SlgGameView`），其 props 是会话运行时份额（`PropsRuntime<'conversation'>`，因此 `sessionId` 与 `useSession` 为 session-maybe）加上 `PropsLocale<'slg'>`、一个声明的设置 store，以及注入的业务面 `{ send, stop, loadOlder }` 加模型选择面 `{ modelAvailable, modelDirectory, loadModels, selectModel }`。
+新增 `@deepseek-ai/dsh-client-ui-slg` 客户端插件包，往框架的 `conversation` 槽位（single、`session-maybe`）以 `priority: -1` 注册。single 槽位渲染其存活条目中优先级最低者，因此直播间遮蔽 ui-conversation 的 ConversationRoot：整个中列渲染成直播间、不新增标签页。视图是纯展示组件（`SlgGameView`），其 props 是会话运行时份额（`PropsRuntime<'conversation'>`，因此 `sessionId` 与 `useSession` 为 session-maybe）加上 `PropsLocale<'slg'>`、一个声明的设置 store，以及注入的业务面 `{ send, stop, loadOlder, setPermission }` 加模型选择面 `{ modelAvailable, modelDirectory, loadModels, selectModel }`。
 
 实时数据只经框架 hook 进入：说话条、对话记录与对话定位轮盘读 `useSession` 的会话行与流式片段，「消耗 tok」读 `useProjection('sessionStats')`，房间标题与成员切换读 `useSessions` 的会话行。动词经会话作用域的 `conversation` 服务（`sessions.scope(sessionId)?.get('conversation')`）转发 send/stop 与历史翻页；没有模型可见输入、也没有会话事件。直播间在会话切换时保持挂载（槽位为 session-maybe），并在无当前会话时禁用输入条。
 
 直播间设置（主播名、弹幕区域/密度/不透明度/字号/速度、堆叠、思考面板高度）走声明式 store（`createSlgSettingsStore`，`persist: 'dsh.slg.settings'`），跨重挂与刷新保留。渲染器在 session-maybe 条目未收养时不提供 store 座椅，且收养不重挂，因此导出组件是无 hook 分发器：有座椅后 `StoredRoom` 读 store，此前 `EphemeralRoom` 用本地状态提供同一设置面，两者共用 `RoomView` 主体。持久化是整值替换，`StoredRoom` 会修复旧形状的载荷（缺失字段回退默认值并写回）。
 
 对话定位轮盘为观众的每条消息渲染一个圆点，每个点锚定到对话记录里真实行的 DOM 元素：点击圆点把那条消息滚到视口顶部，激活点（视口顶线之上最后一行）始终保持在条带正中，条带一屏恰好 4.5 个自适应圆点，滚轮每格精确步进一个点距。快照报告 `hasMore` 时直播间自动翻页 `loadOlder`（拉取失败即停、切会话重试），让记录与轮盘覆盖整个会话。回合流式输出推理时，说话条在可拉伸、高度持久化的面板里显示真实思考内容并自动贴底滚动。
+
+直播间遮蔽了常驻输入区，因此也把它的阻塞交互从会话快照的标准座位重新带到台面：输入条上的权限选择按钮读取 host 计算的 `permissions` 投影，并经绑定会话的 command 面提交 `/permission <preset>`——与 composer chip 和 /permission 弹出层共享同一读源与同一写路径，Full access 走同样的显式风险确认。待审批的工具请求与向用户提问在说话条上方接管显示，经运行时 carrier（`PendingWait.respond`）以与 composer 链相同的线编码应答——审批结果值、整批问题答案、取消错误——且提问优先于审批，与链的选举顺序一致。瞬态收件箱以输入条上方的队列条重现：发送走 conversation 服务的 queue 准入（忙碌时自动停靠），Ctrl/Cmd+Enter 经会话 prompt 动词的 steer 准入插话进行中的回合，排队行经运行时 `updateQueue` 动词变更（立即插话/移除）。
 
 立绘显示七张情绪图之一，图片由 Web 壳的 public 目录提供（`apps/web/public/portraits/`，以 `/portraits/<emotion>.png` 引用）；立绘上的六个隐形命中区点击后各自切换为对应表情并把反应台词送进底部说话条，短暂延迟后回到默认表情。弹幕、打赏弹幕层与对话记录都从同一份扁平化会话行（用户/助手文本与助手工具调用）派生，因此三者永不打架；弹幕/礼物开关分别控制两层，弹幕/打赏速度倍率来自设置 store。表情/反应、面板选择与开关是组件本地状态。
 
@@ -33,10 +35,11 @@ dsh 网页 GUI 把会话渲染成标准聊天线程——标签页、消息、�
 ## Consequences
 
 - 直播间替换对话界面：中列的头部、标签页、聊天主体、输入区被遮蔽，应用侧栏与详情列继续可用；禁用本包即恢复默认聊天线程。
+- 本包以独立的 profile bundle 分发——`dsh.bundle.patch` 指向自带 `cordis.patch.yml`，其唯一的 insert 行声明 `ui-slg`——而不是 web-app bundle 的一行：安装走 `dsh plugin --profile <name> add <package>`，在「插件」面板开关（写入持久化到 profile 用户补丁层，重启保留），卸载走 `dsh plugin --profile <name> remove @deepseek-ai/dsh-client-ui-slg`。
 - 启用本包期间，常驻输入区及其各座位（模型选择、计划、输入 dock）不可用；直播间自带输入条与模型切换器，会话仍可发送、可切模型。
 - 设置按会话作用域持久化在 localStorage；旧形状载荷在首次挂载时修复。无模型可见变更：视图只是重渲染既有快照并把输入经 conversation 服务转发，因此没有新东西触达模型请求或会话日志。
 - 工作区/会话管理动词（重命名、分叉、归档、删除）保持未接线：直播间只经 sessions 运行时份额提供切换。
 
 ## Testing
 
-`browser-plugin.client.spec.ts` 在真实 cordis Context + SlotRegistry 上应用插件，断言 `conversation` 条目（组件、locale、遮蔽优先级）、注入面（无作用域会话时 send/stop 拒绝、模型面降级）与 fiber 销毁注销。`slg-game-view.client.spec.tsx` 直接以 props 渲染组件（58 个测试）：说话条问候/流式/真实思考面板（可拉伸持久化高度、旧载荷修复）、无座椅的会话前渲染与临时设置、设置面板跨重挂驱动每个 store 动作、tok 速度显示与降级、历史自动翻页（循环、在途去重、失败即停）、锚定轮盘（精确行跳转、激活点居中、单点滚轮步进）。
+`browser-plugin.client.spec.ts` 在真实 cordis Context + SlotRegistry 上应用插件，断言 `conversation` 条目（组件、locale、遮蔽优先级）、注入面（无作用域会话时 send/stop 拒绝、模型面降级、steer/队列变更接线）与 fiber 销毁注销。`slg-game-view.client.spec.tsx` 直接以 props 渲染组件（80 个测试）：说话条问候/流式/真实思考面板（可拉伸持久化高度、旧载荷修复）、无座椅的会话前渲染与临时设置、设置面板跨重挂驱动每个 store 动作、tok 速度显示与降级、历史自动翻页（循环、在途去重、失败即停）、锚定轮盘（精确行跳转、激活点居中、单点滚轮步进）、权限选择按钮（无投影不渲染、菜单选预设、重复选择不提交、Full access 风险确认）、审批/提问接管（carrier 线编码、提问优先选举、含自定义/跳过的整批答案）、队列条（行动作、context 行隐藏）与排队/插话提交分流。房间原生的计划 chip、上下文环与斜杠菜单见 [2026-08-23](2026-08-23-slg-room-native-controls.md)。

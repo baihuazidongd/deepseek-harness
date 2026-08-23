@@ -30,6 +30,18 @@
       "path": "../ui-model-selection"
     },
     {
+      "path": "../../interaction/permission-presets"
+    },
+    {
+      "path": "../../llm/token-meter"
+    },
+    {
+      "path": "../../plan/plan-mode"
+    },
+    {
+      "path": "../../interaction/commands"
+    },
+    {
       "path": "../ui-primitives"
     },
     {

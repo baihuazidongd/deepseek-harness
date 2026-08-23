@@ -91,4 +91,11 @@ export interface IWorkspaces {
    * @param sessionId - session to archive.
    */
   archiveSession(sessionId: SessionId): Promise<void>
+  /**
+   * Remove a session from the registry-global archive set: every grouping
+   * surface shows it again, in its former workspace position. Idempotent for
+   * a not-archived id.
+   * @param sessionId - session to unarchive.
+   */
+  unarchiveSession(sessionId: SessionId): Promise<void>
 }

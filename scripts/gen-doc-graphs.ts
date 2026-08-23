@@ -266,7 +266,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'tools',
     title: 'Tool registry and guarded execution pipeline',
     mode: 'core',
-    consumers: ['agent-loop', 'tool-ask-user', 'tool-bash', 'tool-cordis', 'tool-fs', 'tool-terminal', 'tool-skill', 'tool-subagent', 'tool-todo', 'tool-web'],
+    consumers: ['agent-loop', 'tool-ask-user', 'tool-bash', 'tool-cordis', 'tool-fs', 'tool-plugin-inventory', 'tool-terminal', 'tool-skill', 'tool-subagent', 'tool-todo', 'tool-web'],
     note: 'Registers capabilities, owns Code Mode transport, and routes calls through pre-policy, monotonic guards, around dispatch, post-policy, and final-result observation.',
   },
   {
@@ -562,6 +562,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     mode: 'core',
     consumers: ['tool-cordis'],
     note: 'Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport.',
+  },
+  {
+    key: 'pluginInventory',
+    pkg: 'host-plugin-inventory',
+    title: 'Loader entry projection',
+    mode: 'core',
+    consumers: ['tool-plugin-inventory', 'api-remotes'],
+    note: 'Reads the live Loader tree per call and skips structural group rows; the model-facing tool and the browser Remote consume the same snapshot, and setEnabled persists one explicit enablement row into the profile user patch layer before updating the live tree.',
   },
 ]
 

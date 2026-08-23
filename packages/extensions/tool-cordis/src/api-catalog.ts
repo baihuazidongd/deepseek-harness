@@ -964,6 +964,27 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'pluginInventory',
+    summary: 'Remote-only service exposing the Loader\'s current non-group entry state.',
+    description: 'Remote-only service exposing the Loader\'s current non-group entry state.',
+    methods: [
+      {
+        signature: '@Remote(\'list\') list(): PluginInventorySnapshot',
+        description: 'Read the Loader directly on every call. Cordis\'s internal plugin/status events already maintain Entry.fiber and Fiber.state, so a second cache would only add another lifecycle truth to keep synchronized. Each entry is enriched with its package classification and, when the package resolves, its declared description and version; without the launcher\'s user-layer fact the classification is null and metadata stays null.',
+        parameters: [],
+        returns: 'Current non-group Loader entries in Loader order.',
+        throws: ['when the profile manifest or a resolved package manifest is present but unreadable.'],
+      },
+      {
+        signature: '@Remote(\'setEnabled\') async setEnabled(request: PluginInventorySetEnabledRequest): Promise<PluginInventorySnapshot>',
+        description: 'Persist one entry\'s enablement into the booted profile\'s user patch layer and apply it to the live Loader tree. The persisted row is explicit — `{ id, disabled }`, the same semantics as `loader.update` — so a later bundle default never silently reclaims the entry; the boot-time patch watcher re-applies the written layer to the same state. The home-level layer and `--patch` overlays still outrank the written row, matching the composition order the surface booted with.',
+        parameters: [{ name: 'request', description: 'the entry id and the desired enablement.' }],
+        returns: 'the refreshed inventory snapshot.',
+        throws: ['when the surface provided no user patch paths, the entry id is unknown to the Loader tree, or the patch layer rejects the write.'],
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -3476,6 +3497,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PermissionSelect',
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
+  },
+  {
+    name: 'PluginEntryId',
+    declaration: 'export type PluginEntryId = Branded<\'PluginEntryId\'>;',
+  },
+  {
+    name: 'PluginEntrySource',
+    declaration: 'export type PluginEntrySource = \'native\' | \'library\' | null;',
+  },
+  {
+    name: 'PluginFiberPhase',
+    declaration: 'export type PluginFiberPhase = \'pending\' | \'loading\' | \'active\' | \'failed\' | \'unloading\' | null;',
+  },
+  {
+    name: 'PluginInventoryEntry',
+    declaration: 'export interface PluginInventoryEntry {\n    readonly entryId: PluginEntryId;\n    readonly moduleName: string;\n    readonly enabled: boolean;\n    readonly fiberPhase: PluginFiberPhase;\n    readonly source: PluginEntrySource;\n    readonly description: string | null;\n    readonly version: string | null;\n}',
+  },
+  {
+    name: 'PluginInventorySetEnabledRequest',
+    declaration: 'export interface PluginInventorySetEnabledRequest {\n    readonly entryId: PluginEntryId;\n    readonly enabled: boolean;\n}',
+  },
+  {
+    name: 'PluginInventorySnapshot',
+    declaration: 'export interface PluginInventorySnapshot {\n    readonly entries: readonly PluginInventoryEntry[];\n}',
   },
   {
     name: 'PostToolDecision',

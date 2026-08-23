@@ -226,6 +226,16 @@ export class SessionManager {
   }
 
   /**
+   * The in-memory selected Session id. It stays set while the session is only
+   * masked from the projection (a transient gap); it clears only on an
+   * explicit {@link clearSelection}.
+   * @returns the selected id, or undefined after an explicit clear.
+   */
+  get selectedId(): SessionId | undefined {
+    return this.selected
+  }
+
+  /**
    * Return the durable catalog address retained for one child.
    * @param sessionId - possible addressed child id.
    * @returns The direct-parent address, when navigation discovered one.

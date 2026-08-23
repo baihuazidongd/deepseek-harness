@@ -1,6 +1,44 @@
 .root {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
+}
+
+/* The dedicated effort trigger shares the model trigger's chip chrome but
+   reads as a secondary affordance: caption-tone label, no model name, same
+   28px height and rounded pill. */
+.effortTrigger {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 132px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border: none;
+  border-radius: 24px;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.effortTrigger:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.effortTrigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+.effortTrigger:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: default;
 }
 
 /* Figma 313:14108 ToggleButton: 13/20 medium secondary label, 4px gap,
@@ -50,6 +88,15 @@
 .triggerEffort {
   flex: 0 0 auto;
   color: var(--dsw-alias-label-caption);
+}
+
+/* Inside the dedicated effort trigger the level name is the whole label, so
+   it truncates instead of widening the pill past its cap. */
+.effortTriggerLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chevron {
