@@ -1,0 +1,7 @@
+# The skill-conventional-commits bundle patch: one insert for the bundled skill
+# provider. Applied when a profile lists the package in dsh.profile.bundles
+# (dsh plugin --profile <name> add maintains that list); the plugin manager
+# toggles the row through the profile's user layer.
+- insert:
+    - id: skill-conventional-commits
+      name: '@deepseek-ai/dsh-skill-conventional-commits'

@@ -1,0 +1,41 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+/* Numbered cell for one user-sent message; up to five visible at once,
+   matching the 24px header action row chrome height. */
+.cell {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 5px;
+  border: none;
+  border-radius: 6px;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.cell:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.cell:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+/* The message currently sitting at the scrollport's top edge. */
+.cellActive,
+.cellActive:hover {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+}

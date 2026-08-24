@@ -258,16 +258,23 @@
 
 .footerActions {
   display: flex;
+  flex-direction: column;
 }
 
 .collapsed .footArea {
   align-items: center;
 }
 
-.collapsed .settingsArea,
-.collapsed .footerActions {
+.collapsed .settingsArea {
   display: flex;
   justify-content: center;
+  width: auto;
+}
+
+.collapsed .footerActions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   width: auto;
 }
 

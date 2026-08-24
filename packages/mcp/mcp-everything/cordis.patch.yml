@@ -1,0 +1,12 @@
+# The mcp-everything bundle patch: one insert that mounts the mcp-client bridge
+# pointed at the bundled stdio "everything" MCP server (echo/add/now). Applied
+# when a profile lists this package in dsh.profile.bundles.
+- insert:
+    - id: mcp-everything
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: everything
+        transport: stdio
+        command: node
+        args:
+          - !!js "process.cwd() + '/packages/mcp/mcp-everything/server/echo-server.mjs'"

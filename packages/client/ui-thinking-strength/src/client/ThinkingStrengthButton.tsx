@@ -5,9 +5,10 @@
  * reasoning-effort levels and submits through the SAME per-session
  * ModelDirectory as ui-model-selection's composer seat — the host-reported
  * current selection is the single fact both surfaces echo. The trigger renders
- * only while the current model carries reasoning metadata (a model without
- * thinking levels has no strength to select). A rejected selection announces
- * through the shared transient Toast anchored to the composer card.
+ * for every ordinary session with a current model: a model without reasoning
+ * metadata opens to the "no levels" notice instead of a dead list. A rejected
+ * selection announces through the shared transient Toast anchored to the
+ * composer card.
  */
 import {
   useEffect, useId, useMemo, useRef, useState,
@@ -93,10 +94,10 @@ export function ThinkingStrengthButton({
     return () => { document.removeEventListener('mousedown', closeOutside) }
   }, [open])
 
-  if (!available || reasoning === undefined) return null
+  if (!available || state.current === null) return null
 
-  const effectiveEffort = state.current?.reasoningEffort ?? reasoning.defaultEffort
-  const effortLabel = effectiveEffort === undefined
+  const effectiveEffort = state.current?.reasoningEffort ?? reasoning?.defaultEffort
+  const effortLabel = effectiveEffort === undefined || reasoning === undefined
     ? t('effort.providerDefault')
     : reasoning.efforts.find(level => level.id === effectiveEffort)?.name ?? effectiveEffort
   const busy = state.status === 'selecting'
@@ -116,6 +117,7 @@ export function ThinkingStrengthButton({
 
   const chooseEffort = (effort: string | undefined): void => {
     const current = state.current
+    /* v8 ignore next -- the menu renders only while a model is current; a null snapshot unmounts the chip before a click lands */
     if (current === null) return
     if (effectiveEffort === effort) {
       close(true)

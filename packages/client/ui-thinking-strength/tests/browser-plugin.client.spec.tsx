@@ -131,6 +131,17 @@ describe('ui-thinking-strength browser plugin', () => {
     await expect(face.select({ provider: 'acme', model: 'acme-large' })).resolves.toBe(false)
   })
 
+  it('swallows a rejected directory load for an available session', async () => {
+    const b = await bench()
+    await b.fiber.await()
+    const face = b.entry()!.inject!(sid('s1'))
+    b.setSelectReject(true)
+    face.load()
+    expect(b.loads).toEqual(['load'])
+    // Let the directory rejection settle through the swallowing catch.
+    await new Promise((resolve) => { setTimeout(resolve, 0) })
+  })
+
   it('reports an addressed subagent session unavailable and no-ops its verbs', async () => {
     const b = await bench({ addressed: true })
     await b.fiber.await()

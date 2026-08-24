@@ -78,6 +78,15 @@ export function apply(ctx: Context, config: Config = {}): void {
   const catalogDescriptionMaxLength = config.catalogDescriptionMaxLength ?? DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH
   assertPositiveInteger('catalogDescriptionMaxLength', catalogDescriptionMaxLength, 3)
 
+  // Optional read of the skill-inventory enablement set: when the management
+  // Remote is mounted, a user-disabled skill leaves the catalog, the loader,
+  // and the `/name` gesture; without it (a minimal composition) every skill
+  // stays available. The structural type keeps this package free of a value
+  // dependency on the Remote.
+  const skillInventory = ctx.get('skillInventory') as { isDisabled(name: string): boolean } | undefined
+  const isSkillDisabled = (name: string): boolean =>
+    skillInventory !== undefined && skillInventory.isDisabled(name)
+
   const skillTool = defineTool({
     name: 'skill',
     description: 'Load the full instructions for an available skill. Call this with the exact skill name from the session skill catalog before acting on a task that names or clearly matches that skill.',
@@ -134,6 +143,9 @@ export function apply(ctx: Context, config: Config = {}): void {
       const summary = (await ctx.skills.list(lookup)).find(skill => skill.name === args.name)
       if (!summary) {
         throw new Error(`skill "${args.name}" is unknown or no longer available`)
+      }
+      if (isSkillDisabled(args.name)) {
+        throw new Error(`skill "${args.name}" is disabled`)
       }
       if (!isModelInvocable(summary)) {
         throw new Error(`skill "${args.name}" is not available for model invocation`)
@@ -192,7 +204,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       // gesture was never a claim this boundary recognizes. The check sits
       // on the loaded definition — the single lookup that produces what is
       // actually injected.
-      if (skill === undefined || !isUserInvocable(skill)) continue
+      if (skill === undefined || !isUserInvocable(skill) || isSkillDisabled(name)) continue
       const source: SkillInvocationSource = { kind: 'skill-invocation', name, form: 'instructions' }
       injections.push(createUserMessage({
         content: [{ type: 'text', text: renderSkillContent(skill) }],
@@ -223,7 +235,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       : { skills: [], complete: true }
     signal.throwIfAborted()
     if (!snapshot.complete) return decision
-    const skills = snapshot.skills.filter(isModelInvocable)
+    const skills = snapshot.skills.filter(isModelInvocable).filter(skill => !isSkillDisabled(skill.name))
     const entries = catalogSourceEntries(skills, catalogDescriptionMaxLength)
     const digest = digestCatalogEntries(entries)
     const history = catalogHistory(agent)

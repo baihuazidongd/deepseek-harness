@@ -102,13 +102,35 @@ function reconcilePlugins(before: ProfileManifest, profileDir: string): void {
  * @returns the argument with a relative path spec anchored to `cwd`.
  */
 function anchorPathSpec(argument: string, cwd: string): string {
-  const match = /^(?<prefix>(?:file|link):)?(?<path>\.{1,2}(?:[/\\].*)?)$/.exec(argument)
-  if (match?.groups?.path === undefined) return argument
-  // A bare path stays bare and a prefixed spec keeps its prefix: pnpm's
-  // link-vs-copy semantics differ between `file:` and a plain directory
-  // path, and the anchor must not change which one the user asked for.
-  const prefix = match.groups.prefix ?? ''
-  return `${prefix}${resolve(cwd, match.groups.path)}`
+  // A `file:`/`link:` spec is always a filesystem path: anchor it against the
+  // invoking directory whether or not it starts with `./`, because pnpm
+  // resolves those protocols relative to the profile directory otherwise.
+  const prefixed = /^(?<prefix>file|link):(?<rest>.+)$/.exec(argument)
+  if (prefixed?.groups?.rest !== undefined) {
+    return `${prefixed.groups.prefix}:${resolve(cwd, prefixed.groups.rest)}`
+  }
+  // A bare `.`/`..` argument anchors too; every other argument (registry
+  // names, flags) passes through untouched. A bare path stays bare and a
+  // prefixed spec keeps its prefix: pnpm's link-vs-copy semantics differ
+  // between `file:` and a plain directory path, and the anchor must not
+  // change which one the user asked for.
+  const relative = /^(?<path>\.{1,2}(?:[/\\].*)?)$/.exec(argument)
+  if (relative?.groups?.path !== undefined) return resolve(cwd, relative.groups.path)
+  return argument
+}
+
+/** Characters safe to pass unquoted through cmd.exe's command-line parse. */
+const SHELL_SAFE_ARG = /^[A-Za-z0-9_./:\\@+\-=,]+$/
+
+/**
+ * Quote one pnpm argument for cmd.exe when it carries whitespace or
+ * metacharacters, so a checkout path with a space (e.g. `D:\DeepSeek Harness`)
+ * survives the `shell: true` join intact.
+ * @param argument - one anchored pnpm argument.
+ * @returns the argument wrapped in double quotes only when unsafe unquoted.
+ */
+function quoteShellArg(argument: string): string {
+  return SHELL_SAFE_ARG.test(argument) ? argument : `"${argument}"`
 }
 
 /**
@@ -125,11 +147,14 @@ export function runPlugin(profile: string, args: readonly string[]): number {
   }
   const before = readProfileManifest(NAME, dir)
   // Windows resolves pnpm through its .cmd shim, which spawn() refuses
-  // without a shell since the CVE-2024-27980 hardening.
-  const result = spawnSync('pnpm', args.map(argument => anchorPathSpec(argument, process.cwd())), {
+  // without a shell since the CVE-2024-27980 hardening. Quoting the anchored
+  // path args keeps whitespace intact through that shell join.
+  const useShell = process.platform === 'win32'
+  const resolved = args.map(argument => anchorPathSpec(argument, process.cwd()))
+  const result = spawnSync('pnpm', useShell ? resolved.map(quoteShellArg) : resolved, {
     cwd: dir,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    shell: useShell,
   })
   if (result.error !== undefined) {
     const code = (result.error as NodeJS.ErrnoException).code

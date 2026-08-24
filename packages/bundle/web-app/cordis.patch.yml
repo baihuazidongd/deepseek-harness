@@ -94,6 +94,13 @@
     - id: plugin-inventory
       name: '@deepseek-ai/dsh-host-plugin-inventory'
 
+    # Skill and MCP management projections for trusted client RPCs.
+    - id: skill-inventory
+      name: '@deepseek-ai/dsh-host-skill-inventory'
+
+    - id: mcp-inventory
+      name: '@deepseek-ai/dsh-host-mcp-inventory'
+
     # The API gateway: the transport-agnostic dispatch face every client shape
     # shares. The base layer's agent-default-model service owns the default model.
     - id: api-gateway
@@ -203,6 +210,12 @@
     - id: ui-mods
       name: '@deepseek-ai/dsh-client-ui-mods'
 
+    - id: ui-skills
+      name: '@deepseek-ai/dsh-client-ui-skills'
+
+    - id: ui-mcp
+      name: '@deepseek-ai/dsh-client-ui-mcp'
+
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
 
@@ -257,11 +270,6 @@
     # Model selection: the /model popupSelect + composer seat over session.models.
     - id: ui-model-selection
       name: '@deepseek-ai/dsh-client-ui-model-selection'
-
-    # Thinking strength: a composer tool-row chip (beside the send button) that
-    # selects the current model's reasoning effort over the shared model directory.
-    - id: ui-thinking-strength
-      name: '@deepseek-ai/dsh-client-ui-thinking-strength'
 
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'

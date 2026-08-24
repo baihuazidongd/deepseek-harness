@@ -411,6 +411,12 @@
       config:
         apiKeyEnv: DEEPSEEK_API_KEY
 
+    # Keyless, free DuckDuckGo search provider: no API key and no auxiliary
+    # model request, so it is the zero-token search route. A profile selects it
+    # by setting the `web` row's `searchProvider: duckduckgo`.
+    - id: web-search-duckduckgo
+      name: '@deepseek-ai/dsh-web-search-duckduckgo'
+
     - id: tool-web
       name: '@deepseek-ai/dsh-tool-web'
       config:

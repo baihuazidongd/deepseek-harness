@@ -4,7 +4,7 @@
 // purely through props (the directory arrives as the bound `useDirectory` hook).
 // Unavailable sessions and models without reasoning metadata render nothing.
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
@@ -64,7 +64,7 @@ function bench(options: {
   const select = vi.fn<Props['select']>(options.select ?? (() => Promise.resolve(true)))
   const error = vi.fn<Props['error']>(options.error ?? (() => null))
   const load = vi.fn<Props['load']>(() => {})
-  const useDirectory: SnapshotSelectorHook<ModelDirectoryState> = (sel) => sel(state)
+  const useDirectory: SnapshotSelectorHook<ModelDirectoryState> = sel => sel(state)
   const props = {
     available: options.available ?? true,
     load,
@@ -83,18 +83,25 @@ describe('ThinkingStrengthButton', () => {
     expect(b.view.container.firstChild).toBeNull()
   })
 
-  it('renders nothing when the current model has no reasoning metadata', () => {
+  it('renders the button for a model without reasoning metadata, opening to no levels', () => {
     const state = makeState({
       current: { provider: 'acme', model: 'plain' },
       groups: [{ id: 'acme', name: 'Acme', models: [{ id: 'plain', name: 'Plain' }] }],
     })
-    const b = bench({ state })
-    expect(b.view.container.firstChild).toBeNull()
+    bench({ state })
+    fireEvent.click(screen.getByRole('button', { name: '选择思考强度，当前 默认' }))
+    expect(screen.getByText('当前模型未提供思考强度。')).toBeTruthy()
   })
 
   it('renders nothing before the first load resolves a model', () => {
     const b = bench({ state: makeState({ current: null, groups: [] }) })
     expect(b.view.container.firstChild).toBeNull()
+  })
+
+  it('renders the button when the current route is no longer in the catalog, opening to no levels', () => {
+    bench({ state: makeState({ current: { provider: 'acme', model: 'gone' } }) })
+    fireEvent.click(screen.getByRole('button', { name: '选择思考强度，当前 默认' }))
+    expect(screen.getByText('当前模型未提供思考强度。')).toBeTruthy()
   })
 
   it('loads on mount and shows the current effort on the trigger', () => {
@@ -169,6 +176,21 @@ describe('ThinkingStrengthButton', () => {
     expect(await screen.findByText('无法更新思考强度。')).toBeTruthy()
   })
 
+  it('clears the toast once the banner times out', async () => {
+    vi.useFakeTimers()
+    try {
+      bench({ select: () => Promise.resolve(false), error: () => null })
+      fireEvent.click(screen.getByRole('button', { name: '选择思考强度，当前 High' }))
+      fireEvent.click(screen.getByRole('menuitemradio', { name: 'Max' }))
+      await act(async () => { await Promise.resolve() })
+      expect(screen.getByRole('alert')).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(4000) })
+      expect(screen.queryByRole('alert')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('refreshes the directory on every open', () => {
     const b = bench()
     const trigger = screen.getByRole('button', { name: '选择思考强度，当前 High' })
@@ -188,12 +210,27 @@ describe('ThinkingStrengthButton', () => {
     await waitFor(() => { expect(document.activeElement).toBe(trigger) })
   })
 
+  it('a non-Escape key leaves the menu open', () => {
+    bench()
+    fireEvent.click(screen.getByRole('button', { name: '选择思考强度，当前 High' }))
+    const root = screen.getByRole('menu', { name: '思考强度' }).parentElement!
+    fireEvent.keyDown(root, { key: 'Enter' })
+    expect(screen.getByRole('menu')).toBeTruthy()
+  })
+
   it('a mousedown outside the menu closes it', () => {
     bench()
     fireEvent.click(screen.getByRole('button', { name: '选择思考强度，当前 High' }))
     expect(screen.getByRole('menu')).toBeTruthy()
     fireEvent.mouseDown(document.body)
     expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('a mousedown inside the menu keeps it open', () => {
+    bench()
+    fireEvent.click(screen.getByRole('button', { name: '选择思考强度，当前 High' }))
+    fireEvent.mouseDown(screen.getByRole('menuitemradio', { name: 'Max' }))
+    expect(screen.getByRole('menu')).toBeTruthy()
   })
 
   it('focus leaving the root closes the menu, focus moving inside keeps it', () => {

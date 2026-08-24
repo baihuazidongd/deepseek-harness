@@ -1,0 +1,13 @@
+# The mcp-playwright bundle patch: one insert that mounts the mcp-client bridge
+# pointed at Microsoft's open-source Playwright MCP server (browser control)
+# over stdio. Applied when a profile lists this package in dsh.profile.bundles.
+- insert:
+    - id: mcp-playwright
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: playwright
+        transport: stdio
+        command: npx
+        args:
+          - '-y'
+          - '@playwright/mcp'

@@ -13,10 +13,13 @@ export type PluginFiberPhase =
   | null
 
 /**
- * Where an entry's package comes from: an installation-owned bundle
- * (`native`) or a package the user installed into the profile (`library`).
- * `null` when the surface provided no user-layer context, so the caller
- * cannot classify.
+ * Where an entry's package comes from: `native` is an official plugin the
+ * installation shipped (a bundle row in the composition, never a profile
+ * dependency); `library` is a plugin the user added later (present in the
+ * profile manifest's `dependencies`, e.g. via `dsh plugin add`). The
+ * classification is derived from the profile manifest, never chosen by the
+ * caller or the model. `null` when the surface provided no user-layer context,
+ * so the caller cannot classify.
  */
 export type PluginEntrySource = 'native' | 'library' | null
 

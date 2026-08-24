@@ -26,8 +26,9 @@ const DESCRIPTION =
   'Inspect and manage the plugins of this DeepSeek Harness deployment. '
   + 'Operation `list` returns every configured plugin entry: its Loader entry id, module name, '
   + 'enabled flag, lifecycle phase (`pending` | `loading` | `active` | `failed` | `unloading` | '
-  + '`null` when it has no live fiber), source (`native` for product-shipped bundles, `library` '
-  + 'for packages the user installed into the profile), and the declared package '
+  + '`null` when it has no live fiber), source (`native` = an official plugin the installation '
+  + 'shipped, `library` = a plugin the user added later via `dsh plugin add`; the value is '
+  + 'derived from the profile manifest, never chosen by the model), and the declared package '
   + 'description/version when available. Operation `set_enabled` flips one entry by entry id: '
   + 'the change hot-applies immediately (no restart) and persists into the booted profile\'s '
   + 'user patch layer (cordis.patch.yml), so it survives relaunches. '
@@ -100,7 +101,7 @@ const ENTRY_SCHEMA = {
         { type: 'null' },
       ],
       required: true,
-      description: 'Package origin: product bundle (`native`) or user-installed into the profile (`library`); `null` when unclassified.',
+      description: 'Package origin: `native` = an official plugin the installation shipped, `library` = a plugin the user added later; `null` when unclassified. Derived from the profile manifest, never chosen by the model.',
     },
     description: {
       oneOf: [{ type: 'string' }, { type: 'null' }],
