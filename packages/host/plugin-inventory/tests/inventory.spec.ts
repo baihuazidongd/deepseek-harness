@@ -291,23 +291,23 @@ describe('PluginInventoryGateway', () => {
     const profilePatchPath = join(dir, 'cordis.patch.yml')
     provideUserPatchPaths(ctx, { profilePatchPath, homePatchPath: join(dir, 'home.yml') })
     // Mount a config file through the root include: its entry carries the
-    // qualified runtime id `include:ui-slg` while the composition declares
-    // the unqualified `ui-slg` the boot-time patch application indexes.
+    // qualified runtime id `include:demo-plugin` while the composition declares
+    // the unqualified `demo-plugin` the boot-time patch application indexes.
     const configPath = join(dir, 'cordis.yml')
-    await writeFile(configPath, '- id: ui-slg\n  name: cordis:active\n')
+    await writeFile(configPath, '- id: demo-plugin\n  name: cordis:active\n')
     const includeEntry = { id: 'include', name: 'cordis:include', config: { path: pathToFileURL(configPath).href } }
     await ctx.loader.create(includeEntry)
-    const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === 'ui-slg')
-    if (entry === undefined) throw new Error('mounted include produced no ui-slg entry')
-    expect(entry.id).toBe('include:ui-slg')
+    const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === 'demo-plugin')
+    if (entry === undefined) throw new Error('mounted include produced no demo-plugin entry')
+    expect(entry.id).toBe('include:demo-plugin')
 
     const snapshot = await inventory.setEnabled({ entryId: entry.id as PluginEntryId, enabled: false })
     expect(snapshot.entries.find(candidate => candidate.entryId === entry.id)?.enabled).toBe(false)
-    // The row must target `ui-slg`; a `include:ui-slg` row would match nothing
+    // The row must target `demo-plugin`; a `include:demo-plugin` row would match nothing
     // at boot and the disable would silently vanish on the next start.
     const content = await readFile(profilePatchPath, 'utf8')
-    expect(content).toContain('id: ui-slg')
-    expect(content).not.toContain('include:ui-slg')
+    expect(content).toContain('id: demo-plugin')
+    expect(content).not.toContain('include:demo-plugin')
   })
 
   it('rejects an enablement write for an unknown entry id', async () => {

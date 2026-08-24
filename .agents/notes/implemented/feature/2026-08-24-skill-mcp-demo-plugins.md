@@ -6,7 +6,7 @@ English | [中文](2026-08-24-skill-mcp-demo-plugins.zh.md)
 
 ## Problem
 
-The plugin manager — `dsh-host-plugin-inventory` plus the model-facing `plugin_inventory` tool and the `dsh plugin`/`dsh mirror` CLI — had only ever been exercised against client-side bundles (ui-mods, ui-slg). Nothing had verified how an AI actually installs and toggles a *host* plugin, where the install path (`dsh plugin add link:<path>`) and the Loader-entry shape (a skill provider or an MCP bridge) differ from a client bundle.
+The plugin manager — `dsh-host-plugin-inventory` plus the model-facing `plugin_inventory` tool and the `dsh plugin`/`dsh mirror` CLI — had only ever been exercised against client-side bundles (ui-mods). Nothing had verified how an AI actually installs and toggles a *host* plugin, where the install path (`dsh plugin add link:<path>`) and the Loader-entry shape (a skill provider or an MCP bridge) differ from a client bundle.
 
 ## Decision
 

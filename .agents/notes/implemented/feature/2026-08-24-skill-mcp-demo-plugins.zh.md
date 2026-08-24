@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-插件管理器 —— `dsh-host-plugin-inventory` 加上模型可见的 `plugin_inventory` 工具与 `dsh plugin`/`dsh mirror` CLI —— 此前只在客户端 bundle（ui-mods、ui-slg）上验证过。没有任何东西验证过 AI 实际如何安装与开关一个*宿主*插件，而宿主插件的安装路径（`dsh plugin add link:<path>`）与 Loader 条目形态（技能提供者或 MCP 桥接）都不同于客户端 bundle。
+插件管理器 —— `dsh-host-plugin-inventory` 加上模型可见的 `plugin_inventory` 工具与 `dsh plugin`/`dsh mirror` CLI —— 此前只在客户端 bundle（ui-mods）上验证过。没有任何东西验证过 AI 实际如何安装与开关一个*宿主*插件，而宿主插件的安装路径（`dsh plugin add link:<path>`）与 Loader 条目形态（技能提供者或 MCP 桥接）都不同于客户端 bundle。
 
 ## Decision
 
